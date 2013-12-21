@@ -21,8 +21,8 @@
   <Content type="html"><![CDATA[
 <!DOCTYPE html>
 <!-- The hangout API JavaScript. Always include this first -->
-<link rel="stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.10.3/themes/smoothness/jquery-ui.min.css">
-<link rel="stylesheet" href="https://trim-mariner-422.appspot.com/static/style.css">
+<link rel="stylesheet" href="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.3/themes/smoothness/jquery-ui.min.css">
+<link rel="stylesheet" href="//trim-mariner-422.appspot.com/static/style.css">
 <script src="//hangoutsapi.talkgadget.google.com/hangouts/api/hangout.js"></script>
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
 <script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.3/jquery-ui.min.js"></script>
@@ -112,7 +112,7 @@
 
 </div>
 
-<link rel="stylesheet" href="https://trim-mariner-422.appspot.com/app.js">
+<link rel="stylesheet" href="//trim-mariner-422.appspot.com/app.js">
 
 ]]></Content>
 </Module>
