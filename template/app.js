@@ -1,7 +1,8 @@
 (function (window) {
     "use strict";
 
-    var serverPath = 'http://192.168.0.5:8080/';
+    var serverPath = 'https://trim-mariner-422.appspot.com/';
+    //var serverPath = 'https://192.168.0.5:8080/';
 
     function App() {
         console.log("Starting...");
