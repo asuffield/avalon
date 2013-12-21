@@ -1,0 +1,27 @@
+.gameinfo {
+    margin: 2px;
+}
+
+.gameinfobox {
+    margin: 5px;
+}
+
+.main-box {
+    display: none;
+    margin-top: 20px;
+}
+
+.info-box {
+    display: none;
+    margin-top: 20px;
+}
+
+form.proposal {
+    margin: 5px;
+    border: 1px solid black;
+    padding: 5px;
+}
+
+.debug {
+    display: none;
+}

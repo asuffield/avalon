@@ -1,0 +1,5 @@
+Do getactions/storeaction and getvotes/storevote in transactions to
+   stop multiple submissions from causing chaos
+
+Code in avalon.go is confusing WRT pass-by-value semantics of Game and
+   database stores

@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Module>
+    <!-- /*
+ * Copyright (c) 2011 Google Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy
+ * of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */ -->
+  <ModulePrefs title="Test app">
+    <Require feature="rpc"/>
+  </ModulePrefs>
+  <Content type="html"><![CDATA[
+<!DOCTYPE html>
+<!-- The hangout API JavaScript. Always include this first -->
+<link rel="stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.10.3/themes/smoothness/jquery-ui.min.css">
+<link rel="stylesheet" href="http://192.168.0.5:8080/static/style.css">
+<script src="//hangoutsapi.talkgadget.google.com/hangouts/api/hangout.js"></script>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
+<script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.3/jquery-ui.min.js"></script>
+<script src="//apis.google.com/js/client:plusone.js"></script>
+
+<div id="main">
+    <div class='info-box game-status'>
+        <div class='gameinfo'>Current leader: <span class='leader'/></div>
+        <div class='gameinfo'>Current mission: <span class='thismission'/></div>
+        <div class='gameinfo'>Current proposal: <span class='thisproposal'/></div>
+    </div>
+
+    <div class='main-box loading-mode'>
+        Loading...
+    </div>
+
+    <div class='main-box start-mode'>
+        <button class='start-game'>Start game</button>
+    </div>
+
+    <div class='main-box pick-mode'>
+        <div class='gameinfobox'>
+            <div class='gameinfo'>Number of players on this mission: <span class='playercount'/></div>
+        </div>
+        <form class='proposal' id='proposal'>
+            Pick the mission to propose:
+            <ul class='proposal'></ul>
+            <button>Propose</button>
+        </form>
+    </div>
+
+    <div class='main-box voting-mode'>
+        <div class='gameinfobox'>
+            <div class='gameinfo'>Proposed mission:
+              <ul class='players missionplayers'></ul>
+            </div>
+        </div>
+        <form class='vote' id='vote'>
+            Vote on whether this mission should go ahead:<br/>
+            <input class='approve' type='radio' name='vote' value='approve'>Approve</input><br/>
+            <input class='reject' type='radio' name='vote' value='reject'>Reject</input><br/>
+            <button>Commit</button>
+        </form>
+    </div>
+
+    <div class='main-box mission-mode'>
+        <div class='gameinfobox'>
+            <div class='gameinfo'>Proposed mission:
+              <ul class='players missionplayers'></ul>
+            </div>
+        </div>
+        <form class='mission' id='mission'>
+            Select your action:<br/>
+            <input class='success' type='radio' name='action' value='success'>Success</input><br/>
+            <input class='fail' type='radio' name='action' value='fail'>Fail</input><br/>
+            <button>Commit</button>
+        </form>
+    </div>
+
+    <div class='main-box gameover-mode'>
+        <div class='gameinfobox'>
+            <div class='gameinfo'>Result: <span class='result'/></div>
+            <div class='gameinfo'>Cards:
+              <ul class='players playercards'></ul>
+            </div>
+        </div>
+    </div>
+
+    <div class='info-box table-order'>
+        Table order:
+        <ol class='players'></ol>
+    </div>
+
+    <div class='info-box mission-results'>
+        Missions:
+        <ol class='missions'></ol>
+    </div>
+
+    <div class='debug'>
+        Debug buttons
+        <button id='start'>Start refresh</button>
+        <button id='stop'>Stop refresh</button>
+    </div>
+</div>
+
+<div id="scoreboard">
+
+</div>
+
+<script src="http://192.168.0.5:8080/app.js"></script>
+
+]]></Content>
+</Module>

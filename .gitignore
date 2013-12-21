@@ -1,0 +1,26 @@
+# OS noise
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+.elc
+auto-save-list
+tramp
+.\#*
+
+# vim
+*.un~
+Session.vim
+.netrwhist
+.*.s[a-w][a-z]
+
+*.orig
