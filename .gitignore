@@ -24,3 +24,6 @@ Session.vim
 .*.s[a-w][a-z]
 
 *.orig
+
+/avalon/web/keys/keys.go
+/static/appdev.xml

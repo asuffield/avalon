@@ -1,8 +1,7 @@
 (function (window) {
     "use strict";
 
-    var serverPath = 'https://trim-mariner-422.appspot.com/';
-    //var serverPath = 'https://192.168.0.5:8080/';
+    var serverPath = '{{ .ServerPath }}';
 
     function App() {
         console.log("Starting...");
@@ -28,6 +27,7 @@
             console.log("API Ready");
 
             this.apiready = true;
+            this.namecache = {};
             this.myid = gapi.hangout.getLocalParticipantId();
             this.participants = gapi.hangout.getEnabledParticipants();
             this.gameid = null;
@@ -47,7 +47,7 @@
             this.auth_got = false;
             window.auth_callback_gapi = this.authDone.bind(this);
             gapi.auth.signIn({
-                'accesstype': 'offline',
+                'accesstype': 'online',
                 'clientid': '{{ .ClientID }}',
                 'cookiepolicy': 'single_host_origin',
                 'callback': 'auth_callback_gapi',
@@ -177,6 +177,8 @@
         this.ui.$commitvote.prop('disabled', false);
         this.ui.$approve.prop('disabled', false);
         this.ui.$reject.prop('disabled', false);
+        this.ui.$approve.prop('checked', false);
+        this.ui.$reject.prop('checked', false);
     };
 
     App.prototype.votingMode = function() {
@@ -199,6 +201,8 @@
         this.ui.$commitmission.prop('disabled', false);
         this.ui.$success.prop('disabled', false);
         this.ui.$failure.prop('disabled', false);
+        this.ui.$success.prop('checked', false);
+        this.ui.$failure.prop('checked', false);
     };
 
     App.prototype.missionMode = function() {
@@ -436,14 +440,31 @@
         }).done(this.handleGameState.bind(this));
     };
 
-    App.prototype.playerNameById = function (id) {
-        var participant = gapi.hangout.getParticipantById(id);
-        if (participant === null) {
-            return '<AI ' + id + '>';
+    var ai_re = /^ai_(\d+)$/;
+
+    var do_playerNameById = function (id) {
+        var result = ai_re.exec(id);
+        if (result === null) {
+            var participant = gapi.hangout.getParticipantById(id);
+            if (participant === null) {
+                // Note that this only happens for players that we've
+                // never seen in the namecache
+                return '<absent player>';
+            }
+            else {
+                return participant.person.displayName;
+            }
         }
         else {
-            return participant.person.displayName;
+            return '<AI ' + result[1] + '>';
         }
+    };
+
+    App.prototype.playerNameById = function (id) {
+        if (!(id in this.namecache)) {
+            this.namecache[id] = do_playerNameById(id);
+        }
+        return this.namecache[id];
     };
 
     App.prototype.playerName = function (pos) {

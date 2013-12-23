@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/sessions"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 	mathrand "math/rand"
     "log"
@@ -19,6 +20,7 @@ import (
 func init() {
 	mathrand.Seed( time.Now().UTC().UnixNano())
 	http.Handle("/app.js", web.AppHandler(auth.AppJS))
+	http.Handle("/appdev.js", web.AppHandler(auth.AppDevJS))
 	http.Handle("/auth/token", web.AjaxHandler(auth.AuthToken))
 	http.Handle("/game/start", web.AjaxHandler(game_start))
 	http.Handle("/game/reveal", web.GameHandler(game_reveal))
@@ -32,15 +34,48 @@ type GameStartData struct {
 	Participants map[string]string `json:"players"`
 }
 
-func shuffle_players(participants map[string]string) []string {
-	players := make([]string, len(participants))
-	order := mathrand.Perm(len(participants))
+func shuffle_players(player_names []string) []string {
+	players := make([]string, len(player_names))
+	order := mathrand.Perm(len(player_names))
 	i := 0
-	for id := range participants {
+	for _, id := range player_names {
 		players[order[i]] = id
 		i++
 	}
 	return players
+}
+
+func game_factory(player_names []string, participants []string) db.GameFactory {
+	return func(gameid string, hangoutid string) Game {
+		players := shuffle_players(player_names)
+		ais := make([]int, 0)
+		for i, id := range players {
+			if strings.HasPrefix(id, "ai_") {
+				ais = append(ais, i)
+			}
+		}
+
+		game := Game{
+			Id: gameid,
+			Hangout: hangoutid,
+			StartTime: time.Now(),
+			Participants: participants,
+			Players: players,
+			AIs: ais,
+			Setup: MakeGameSetup(len(players)),
+			Roles: mathrand.Perm(len(players)),
+			Leader: -1, // See comment in game_start - this is the "start of game" marker
+			ThisMission: 0,
+			ThisProposal: 0,
+			LastVoteMission: -1,
+			LastVoteProposal: -1,
+			GoodScore: 0,
+			EvilScore: 0,
+			GameOver: false,
+		}
+
+		return game
+	}
 }
 
 func game_start(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
@@ -64,58 +99,54 @@ func game_start(w http.ResponseWriter, r *http.Request, session *sessions.Sessio
 		return &web.AppError{errors.New(m), m, 500}
 	}
 
-	gameid := auth.RandomString(64)
-
-	c := appengine.NewContext(r)
-	oldgame, err := db.RetrieveGame(c, gameid)
-	if err != nil {
-		return &web.AppError{err, "Error fetching game", 500}
-	} else if oldgame != nil {
-		m := "Duplicate gameid created"
-		return &web.AppError{errors.New(m), m, 500}
+	player_names := make([]string, 0)
+	participants := make([]string, 0)
+	for k, v := range gamestartdata.Participants {
+		player_names = append(player_names, k)
+		participants = append(participants, v)
 	}
 
-	participants := map[string]string {}
-	for k, v := range gamestartdata.Participants {
-		participants[k] = v
+	ai_count := 0
+	if len(participants) < 5 {
+		ai_count = 5 - len(participants)
 	}
 
 	// Fake it for testing purposes
-	for i := len(participants); i < 5; i++ {
-		participants[strconv.Itoa(i)] = "fake"
+	for i := 0; i < ai_count; i++ {
+		player_names = append(player_names, "ai_" + strconv.Itoa(i + 1))
 	}
-	players := shuffle_players(participants)
-	ais := make([]int, 0)
-	for i, id := range players {
-		if participants[id] == "fake" {
-			ais = append(ais, i)
+
+	c := appengine.NewContext(r)
+	var game Game
+	err = db.FindOrCreateGame(c, hangoutID, &game, game_factory(player_names, participants))
+	if err != nil {
+		return &web.AppError{err, "Error making game", 500}
+	}
+
+	// This step is critical: here we validate that the authenticated
+	// userID is a participant in the game, before we hand them a
+	// cryptographic cookie with the game in it
+	useridmap := MakePlayerMap(game.Participants)
+	_, ok = useridmap[userID]
+	if !ok {
+		m := "Not a user in the current game"
+		return &web.AppError{errors.New(m), m, 500}
+	}
+
+	// We use leader == -1 as a "start of game" indicator, to make
+	// sure we go through this step exactly once
+	if game.Leader == -1 {
+		game.Leader = 0
+
+		aerr := start_picking(c, game)
+		if aerr != nil {
+			return aerr
 		}
 	}
 
-	game := Game{
-		Id: gameid,
-		Hangout: hangoutID,
-		StartTime: time.Now(),
-		Players: players,
-		AIs: ais,
-		Setup: MakeGameSetup(len(players)),
-		Roles: mathrand.Perm(len(players)),
-		Leader: 0,
-		ThisMission: 0,
-		ThisProposal: 0,
-		LastVoteMission: -1,
-		LastVoteProposal: -1,
-		GoodScore: 0,
-		EvilScore: 0,
-		GameOver: false,
-	}
+	log.Printf("Joining game: %+v", game)
 
-	aerr := start_picking(c, game)
-	if aerr != nil {
-		return aerr
-	}
-
-	session.Values["gameID"] = gameid
+	session.Values["gameID"] = game.Id
 
 	err = session.Save(r, w)
 	if err != nil {
@@ -201,7 +232,6 @@ type GameStateOver struct {
 }
 
 func get_last_vote(c appengine.Context, game Game, pvotes *[]bool) error {
-	log.Printf("Game: %+v", game)
 	if game.LastVoteMission == -1 || game.LastVoteProposal == -1 {
 		return nil
 	}
@@ -211,15 +241,11 @@ func get_last_vote(c appengine.Context, game Game, pvotes *[]bool) error {
 		return err
 	}
 
-	log.Printf("votedata: %+v", votedata)
-
 	votes := make([]bool, len(game.Players))
 	for i, v := range(votedata) {
 		votes[i] = v
 	}
 	*pvotes = votes
-
-	log.Printf("votes: %+v", votes)
 
 	return nil
 }
@@ -488,12 +514,11 @@ func do_vote(c appengine.Context, game Game, i int, vote bool, pvotes *map[int]b
 		// Count the number of approve/reject votes
 		approves, rejects := count_bools(votes)
 
-		log.Printf("Votes: %+v", votes)
-		log.Printf("%d approves, %d rejects", approves, rejects)
+		//log.Printf("Votes: %+v", votes)
+		//log.Printf("%d approves, %d rejects", approves, rejects)
 
 		game.LastVoteMission = game.ThisMission
 		game.LastVoteProposal = game.ThisProposal
-		log.Printf("set game: %+v", game)
 
 		if approves > rejects {
 			// Start mission
@@ -635,7 +660,7 @@ func game_propose(w http.ResponseWriter, r *http.Request, c appengine.Context, s
 
 	do_proposal(c, game, proposal)
 
-	pgame, err := db.RetrieveGame(c, game.Id)
+	pgame, err := db.RetrieveGame(c, game.Hangout, game.Id)
 	if err != nil {
 		return &web.AppError{err, "Error refetching game", 500}
 	}
@@ -684,7 +709,7 @@ func game_vote(w http.ResponseWriter, r *http.Request, c appengine.Context, sess
 		return aerr
 	}
 
-	pgame, err := db.RetrieveGame(c, game.Id)
+	pgame, err := db.RetrieveGame(c, game.Hangout, game.Id)
 	if err != nil {
 		return &web.AppError{err, "Error refetching game", 500}
 	}
@@ -763,7 +788,7 @@ func game_mission(w http.ResponseWriter, r *http.Request, c appengine.Context, s
 		return aerr
 	}
 
-	pgame, err := db.RetrieveGame(c, game.Id)
+	pgame, err := db.RetrieveGame(c, game.Hangout, game.Id)
 	if err != nil {
 		return &web.AppError{err, "Error refetching game", 500}
 	}

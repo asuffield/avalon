@@ -1,6 +1,8 @@
 package data
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"time"
 )
 
@@ -31,6 +33,7 @@ type Game struct {
 	StartTime time.Time
 	Setup GameSetup
 	Players []string
+	Participants []string
 	AIs []int
 	Roles []int
 	Leader int
@@ -75,3 +78,8 @@ func MakeGameSetup(players int) GameSetup {
 	return GameSetup{Missions: missions, Cards: cards, Spies: spycount}
 }
 
+func RandomString(length int) (str string) {
+	b := make([]byte, length)
+	rand.Read(b)
+	return base64.StdEncoding.EncodeToString(b)
+}

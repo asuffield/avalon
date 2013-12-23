@@ -4,6 +4,7 @@ import (
 	"appengine"
 	"avalon/data"
 	"avalon/db"
+	"avalon/web/keys"
 	"errors"
 	"github.com/gorilla/sessions"
 	"net/http"
@@ -11,7 +12,7 @@ import (
 )
 
 // Store initializes the Gorilla session store.
-var Store = sessions.NewCookieStore([]byte("AhshaechieFoo6AeSh8ophoosuecooti"), []byte("nohb6aemooBo3aeyi5aem9cee2quauch"))
+var Store = sessions.NewCookieStore([]byte(keys.CookieKey1Auth), []byte(keys.CookieKey1Encr))
 
 type AppHandler func(http.ResponseWriter, *http.Request, *sessions.Session) *AppError
 type AjaxHandler func(http.ResponseWriter, *http.Request, *sessions.Session) *AppError
@@ -65,10 +66,11 @@ func gameSetup(w http.ResponseWriter, r *http.Request, c appengine.Context, sess
 		return &AppError{errors.New(m), m, 403}
 	}
 
+	userID, _ := session.Values["userID"].(string)
 	hangoutID, _ := session.Values["hangoutID"].(string)
 	participantID, _ := session.Values["participantID"].(string)
 
-	game, err := db.RetrieveGame(c, gameID)
+	game, err := db.RetrieveGame(c, hangoutID, gameID)
 	if err != nil {
 		return &AppError{err, "Error fetching game from datastore", 500}
 	}
@@ -80,6 +82,13 @@ func gameSetup(w http.ResponseWriter, r *http.Request, c appengine.Context, sess
 	if game.Hangout != hangoutID {
 		m := "Incorrect hangout for gameid"
 		return &AppError{errors.New(m), m, 403}
+	}
+
+	useridmap := data.MakePlayerMap(game.Participants)
+	_, ok = useridmap[userID]
+	if !ok {
+		m := "Not a user in that game"
+		return &AppError{errors.New(m), m, 500}
 	}
 
 	playermap := data.MakePlayerMap(game.Players)

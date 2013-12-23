@@ -3,9 +3,8 @@ package auth
 import (
 	"appengine"
 	"appengine/urlfetch"
+	"avalon/data"
 	"avalon/web"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"github.com/gorilla/sessions"
@@ -16,7 +15,10 @@ import (
 )
 
 const (
-	clientID = "834761542099-061td9hu3vl1mochrijcvrrt1e4egvq9.apps.googleusercontent.com"
+	avalonClientID = "834761542099-061td9hu3vl1mochrijcvrrt1e4egvq9.apps.googleusercontent.com"
+	avalonServerPath = "https://trim-mariner-422.appspot.com/"
+	avalonDevClientID = "834761542099-061td9hu3vl1mochrijcvrrt1e4egvq9.apps.googleusercontent.com"
+	avalonDevServerPath = "http://192.168.0.5:8080/"
 )
 
 var appjsTemplate = template.Must(template.ParseFiles("template/app.js"))
@@ -37,17 +39,10 @@ type TokenInfo struct {
 	AccessType string `json:"access_type"`
 }
 
-// randomString returns a random string with the specified length
-func RandomString(length int) (str string) {
-	b := make([]byte, length)
-	rand.Read(b)
-	return base64.StdEncoding.EncodeToString(b)
-}
-
-func AppJS(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+func make_AppJS(w http.ResponseWriter, r *http.Request, session *sessions.Session, clientID string, serverPath string) *web.AppError {
 	// Create a state token to prevent request forgery and store it in the session
 	// for later validation
-	state := RandomString(64)
+	state := data.RandomString(64)
 	session.Values["state"] = state
 	err := session.Save(r, w)
 	if err != nil {
@@ -58,8 +53,8 @@ func AppJS(w http.ResponseWriter, r *http.Request, session *sessions.Session) *w
 
 	// Fill in the missing fields in index.html
 	var data = struct {
-		ClientID, State string
-	}{clientID, stateURL}
+		ClientID, State, ServerPath string
+	}{clientID, stateURL, serverPath}
 
 	// Render and serve the HTML
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -69,6 +64,14 @@ func AppJS(w http.ResponseWriter, r *http.Request, session *sessions.Session) *w
 		return &web.AppError{err, "Error rendering template", 500}
 	}
 	return nil
+}
+
+func AppJS(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+	return make_AppJS(w, r, session, avalonClientID, avalonServerPath)
+}
+
+func AppDevJS(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+	return make_AppJS(w, r, session, avalonDevClientID, avalonDevServerPath)
 }
 
 func fetch_token_info(c appengine.Context, token string) (*TokenInfo, *web.AppError) {
@@ -113,7 +116,7 @@ func AuthToken(w http.ResponseWriter, r *http.Request, session *sessions.Session
 		return aerr
 	}
 
-	log.Printf("Got userID %s and hangoutID %s", tokeninfo.UserId, authdata.Hangout)
+	//log.Printf("Got userID %s and hangoutID %s", tokeninfo.UserId, authdata.Hangout)
 
 	session.Values["userID"] = tokeninfo.UserId
 	session.Values["participantID"] = authdata.MyId
