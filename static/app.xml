@@ -41,6 +41,12 @@
 
     <div class='main-box start-mode'>
         <button class='start-game'>Start game</button>
+
+        <div class='gameinfobox'>
+           <div class='gameinfo'>Players:
+              <ul class='players gameplayers'></ul>
+           </div>
+        </div>
     </div>
 
     <div class='main-box pick-mode'>
