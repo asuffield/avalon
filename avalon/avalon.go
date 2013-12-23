@@ -403,11 +403,6 @@ func game_state(w http.ResponseWriter, r *http.Request, c appengine.Context, ses
 		}
 	}
 
-	err = session.Save(r, w)
-	if err != nil {
-		log.Println("error saving session:", err)
-	}
-
 	w.Header().Set("Content-type", "application/json")
 	err = json.NewEncoder(w).Encode(&state)
 	if err != nil {

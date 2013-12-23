@@ -12,6 +12,20 @@ func makeGameKey(c appengine.Context, game data.Game) *datastore.Key {
 	return gameKey
 }
 
+func FindGame(c appengine.Context, hangout string) (*data.Game, error) {
+	hangoutKey := datastore.NewKey(c, "Hangout", hangout, 0, nil)
+	q := datastore.NewQuery("Game").Ancestor(hangoutKey).Filter("GameOver =", false).Order("-StartTime").Limit(1)
+	var games []data.Game
+	_, err := q.GetAll(c, &games)
+	if err != nil {
+		return nil, err
+	}
+	if len(games) >= 1 {
+		return &games[0], nil
+	}
+	return nil, nil
+}
+
 type GameFactory func(string, string) data.Game
 
 func FindOrCreateGame(c appengine.Context, hangout string, pgame *data.Game, factory GameFactory) error {
