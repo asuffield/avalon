@@ -5,6 +5,7 @@ import (
 	"avalon/auth"
 	. "avalon/data"
 	"avalon/db"
+	"avalon/dump"
 	"avalon/web"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,7 @@ func init() {
 	http.Handle("/app.js", web.AppHandler(auth.AppJS))
 	http.Handle("/appdev.js", web.AppHandler(auth.AppDevJS))
 	http.Handle("/auth/token", web.AjaxHandler(auth.AuthToken))
+	http.Handle("/admin/dumpgame", web.AppHandler(dump.DumpGame))
 	http.Handle("/game/start", web.AjaxHandler(game_start))
 	http.Handle("/game/reveal", web.GameHandler(game_reveal))
 	http.Handle("/game/propose", web.GameHandler(game_propose))

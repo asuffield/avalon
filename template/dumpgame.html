@@ -1,0 +1,45 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+  <body>
+    <div>
+      Game ID: {{.Game.Id}}<br/>
+      Hangout: {{.Game.Hangout}}<br/>
+      Start time: {{.Game.StartTime}}<br/>
+      Setup: {{.Game.Setup}}<br/>
+      Players: {{.Game.Players}}<br/>
+      Participants: {{.Game.Participants}}<br/>
+      AIs: {{.Game.AIs}}<br/>
+      Roles: {{.Game.Roles}}<br/>
+      Leader: {{.Game.Leader}}<br/>
+      ThisMission: {{.Game.ThisMission}}<br/>
+      ThisProposal: {{.Game.ThisProposal}}<br/>
+      LastVoteMission: {{.Game.LastVoteMission}}<br/>
+      LastVoteProposal: {{.Game.LastVoteProposal}}<br/>
+      GoodScore: {{.Game.GoodScore}}<br/>
+      EvilScore: {{.Game.EvilScore}}<br/>
+      GameOver: {{.Game.GameOver}}<br/>
+    </div>
+    <div>
+      Missions:
+      <ol>
+      {{range .Missions}}
+      <li>
+        <div>
+          Mission: {{printf "%+v" .Mission}}
+          Actions: {{printf "%+v" .Actions}}
+          <ol>
+          {{range .Proposals}}
+          <li>
+            Proposal: {{printf "%+v" .Proposal}}
+            Votes: {{printf "%+v" .Votes}}
+          </li>
+          {{end}}
+          </ol>
+        </div>
+      </li>
+      {{end}}
+      </ol>
+    </div>
+    <p>Results {{printf "%+v" .Results}}</p>
+  </body>
+</html>
