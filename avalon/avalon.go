@@ -26,6 +26,7 @@ func init() {
 	http.Handle("/auth/token", web.AjaxHandler(auth.AuthToken))
 	http.Handle("/admin/dumpgame", web.AppHandler(dump.DumpGame))
 	http.Handle("/game/start", web.AjaxHandler(game_start))
+	http.Handle("/game/join", web.AjaxHandler(game_join))
 	http.Handle("/game/reveal", web.GameHandler(game_reveal))
 	http.Handle("/game/propose", web.GameHandler(game_propose))
 	http.Handle("/game/vote", web.GameHandler(game_vote))
@@ -149,6 +150,51 @@ func game_start(w http.ResponseWriter, r *http.Request, session *sessions.Sessio
 
 	log.Printf("Joining game: %+v", game)
 	log.Printf("Dump URL: /admin/dumpgame?game=%s&hangout=%s", url.QueryEscape(game.Id), url.QueryEscape(game.Hangout))
+
+	session.Values["gameID"] = game.Id
+
+	err = session.Save(r, w)
+	if err != nil {
+		log.Println("error saving session:", err)
+	}
+
+	playermap := MakePlayerMap(game.Players)
+	mypos := playermap[participantID]
+
+	return game_state(w, r, c, session, game, mypos)
+}
+
+func game_join(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+	userID, ok := session.Values["userID"].(string)
+	if !ok || 0 == len(userID) {
+		m := "Not authenticated via oauth"
+		return &web.AppError{errors.New(m), m, 403}
+	}
+
+	hangoutID, _ := session.Values["hangoutID"].(string)
+	participantID, _ := session.Values["participantID"].(string)
+
+	c := appengine.NewContext(r)
+	pgame, err := db.FindGame(c, hangoutID)
+	if err != nil {
+		return &web.AppError{err, "Error finding game", 500}
+	}
+	if pgame == nil {
+		m := "No game here to join"
+		return &web.AppError{errors.New(m), m, 404}
+	}
+
+	game := *pgame
+
+	// This step is critical: here we validate that the authenticated
+	// userID is a participant in the game, before we hand them a
+	// cryptographic cookie with the game in it
+	useridmap := MakePlayerMap(game.Participants)
+	_, ok = useridmap[userID]
+	if !ok {
+		m := "Not a user in the current game"
+		return &web.AppError{errors.New(m), m, 500}
+	}
 
 	session.Values["gameID"] = game.Id
 

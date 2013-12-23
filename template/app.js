@@ -27,9 +27,9 @@
             console.log("API Ready");
 
             this.apiready = true;
+            this.participant_ids = null;
             this.namecache = {};
             this.myid = gapi.hangout.getLocalParticipantId();
-            this.participants = gapi.hangout.getEnabledParticipants();
             this.gameid = null;
             this.leader = null;
             this.gamestate = 'joining';
@@ -102,22 +102,47 @@
         this.ui = {};
         this.gamestate = 'start';
         $('div.main-box').hide();
+        $('button.start-game').prop('disabled', true);
         this.startMode();
     };
 
-    App.prototype.gameStartClick = function() {
+    App.prototype.showGamePlayers = function() {
+        if (this.gamestate != 'start') {
+            return;
+        }
+
+        this.ui.$gameplayers.empty();
+
         var participant_ids = {};
-        var participants = gapi.hangout.getEnabledParticipants();
+        var participants = gapi.hangout.getParticipants();
+
         var foundme = false;
         for (var i = 0; i < participants.length; i++) {
+            var $player = $("<li/>");
+            var text = participants[i].person.displayName;
+            if (participants[i].id == this.myid) {
+                text += " (me)";
+            }
+            $player.text(text);
+            this.ui.$gameplayers.append($player);
+
             participant_ids[participants[i].id] = participants[i].person.id;
             if (participants[i].id == this.myid) {
                 foundme = true;
             }
         }
 
-        if (!foundme) {
+        if (foundme) {
+            this.participant_ids = participant_ids;
+            $('button.start-game').prop('disabled', false);
+        }
+        else {
             console.log("WTF: didn't find me in", participants, gapi.hangout.getParticipants());
+        }
+    };
+
+    App.prototype.gameStartClick = function() {
+        if (this.participant_ids === null) {
             return false;
         }
 
@@ -129,7 +154,7 @@
             type: 'POST',
             url: serverPath + 'game/start',
             contentType: 'application/json; charset=utf-8',
-            data: JSON.stringify({ players: participant_ids }),
+            data: JSON.stringify({ players: this.participant_ids }),
             dataType: 'json',
             xhrFields: {
                 withCredentials: true
@@ -138,7 +163,19 @@
             .fail(function() {that.ui.$start_button.prop('disabled', false)});
     };
 
+    App.prototype.joinGame = function(gameid) {
+        $.ajax({
+            type: 'POST',
+            url: serverPath + 'game/join',
+            dataType: 'json',
+            xhrFields: {
+                withCredentials: true
+            },
+        }).done(this.handleGameState.bind(this));
+    };
+
     App.prototype.gameStart = function(gameid) {
+        console.log("gameStart(" + gameid + "), old == " + this.gameid)
         this.this_mission = null;
         this.this_proposal = null;
         this.gameid = gameid;
@@ -149,6 +186,8 @@
 
     App.prototype.startMode = function() {
         this.ui.$start_button = $('button.start-game');
+        this.ui.$gameplayers = $('div.start-mode ul.gameplayers');
+        this.showGamePlayers();
 
         $('div.start-mode').show();
     };
@@ -388,7 +427,8 @@
     App.prototype.checkState = function (event) {
         var state = gapi.hangout.data.getState();
         if (state.gameid != this.gameid) {
-            this.gameStart(state.gameid);
+            console.log("hangout state said we need to join the game");
+            this.joinGame();
         }
         if (state.gamestate != this.gamestate) {
             this.refreshGame();
@@ -396,7 +436,7 @@
     };
 
     App.prototype.onParticipantsChanged = function (event) {
-        this.participants = gapi.hangout.getEnabledParticipants();
+        this.showGamePlayers();
     };
 
     App.prototype.revealRoles = function() {
@@ -520,6 +560,7 @@
         this.mypos = this.players.indexOf(this.myid);
 
         if (this.gameid != msg.general.gameid) {
+            console.log("/state said we need to change games");
             this.gameStart(msg.general.gameid);
             gapi.hangout.data.submitDelta({gameid: msg.general.gameid});
         }
@@ -556,6 +597,7 @@
         this.renderMissions(msg.general.mission_results);
 
         if (msg.general.state == 'picking') {
+            console.log("Should I become leader? msg == " + msg.general.leader + ", this == " + this.leader + ", my == " + this.mypos);
             if (msg.general.leader == this.mypos && this.leader != this.mypos) {
                 this.becomeLeader();
             }

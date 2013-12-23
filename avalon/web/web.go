@@ -94,6 +94,7 @@ func gameSetup(w http.ResponseWriter, r *http.Request, c appengine.Context, sess
 	playermap := data.MakePlayerMap(game.Players)
 	pos, ok := playermap[participantID]
 	if !ok {
+		log.Printf("Game %+v, cookies %+v", game, session.Values)
 		m := "Not a player in that game"
 		return &AppError{errors.New(m), m, 403}
 	}
