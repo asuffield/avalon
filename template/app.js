@@ -597,11 +597,10 @@
         this.renderMissions(msg.general.mission_results);
 
         if (msg.general.state == 'picking') {
-            console.log("Should I become leader? msg == " + msg.general.leader + ", this == " + this.leader + ", my == " + this.mypos);
             if (msg.general.leader == this.mypos && this.leader != this.mypos) {
                 this.becomeLeader();
             }
-            this.leader = this.mypos;
+            this.leader = msg.general.leader;
 
             this.missionsize = msg.mission_size;
 
