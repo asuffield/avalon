@@ -28,6 +28,7 @@ type DumpGameData struct {
 	Game data.Game
 }
 
+var recentGamesTemplate = template.Must(template.ParseFiles("template/recentgames.html"))
 var dumpGameTemplate = template.Must(template.ParseFiles("template/dumpgame.html"))
 
 func DumpGame(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
@@ -35,7 +36,25 @@ func DumpGame(w http.ResponseWriter, r *http.Request, session *sessions.Session)
 	gameid := r.FormValue("game")
 
 	c := appengine.NewContext(r)
-	pgame, _ := db.RetrieveGame(c, hangout, gameid)
+
+	if hangout == "" || gameid == "" {
+		games, err := db.RecentGames(c, 20)
+		if err != nil {
+			return &web.AppError{err, "Could not retrieve recent games", 500}
+		}
+
+		w.Header().Set("Content-Type", "text/html")
+		err = recentGamesTemplate.Execute(w, games)
+		if err != nil {
+			return &web.AppError{err, "Error rendering template", 500}
+		}
+		return nil
+	}
+
+	pgame, err := db.RetrieveGame(c, hangout, gameid)
+	if err != nil {
+		return &web.AppError{err, "Could not retrieve game", 500}
+	}
 	if pgame == nil {
 		m := "Could not find game"
 		return &web.AppError{errors.New(m), m, 404}
@@ -58,7 +77,7 @@ func DumpGame(w http.ResponseWriter, r *http.Request, session *sessions.Session)
 	dump := DumpGameData{ Game: game, Missions: missions, Results: results }
 
 	w.Header().Set("Content-Type", "text/html")
-	err := dumpGameTemplate.Execute(w, dump)
+	err = dumpGameTemplate.Execute(w, dump)
 	if err != nil {
 		return &web.AppError{err, "Error rendering template", 500}
 	}

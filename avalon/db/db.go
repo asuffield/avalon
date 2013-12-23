@@ -67,6 +67,13 @@ func RetrieveGame(c appengine.Context, hangoutid string, gameid string) (*data.G
 	return &game, err
 }
 
+func RecentGames(c appengine.Context, limit int) ([]data.Game, error) {
+	q := datastore.NewQuery("Game").Order("-StartTime").Limit(limit)
+	var games []data.Game
+	_, err := q.GetAll(c, &games)
+	return games, err
+}
+
 func StoreProposal(c appengine.Context, game data.Game, proposal data.Proposal) error {
 	gameKey := makeGameKey(c, game)
 	missionKey := datastore.NewKey(c, "Mission", "", int64(1000 + game.ThisMission), gameKey)

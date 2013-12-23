@@ -1,0 +1,13 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+  <body>
+    <ol>
+      {{range .}}
+      <li>
+        Game started {{.StartTime}}
+        <a href="/admin/dumpgame?game={{.Id}}&hangout={{.Hangout}}">Dump game</a>
+      </li>
+      {{end}}
+    </ol>
+  </body>
+</html>
