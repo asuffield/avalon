@@ -2,6 +2,7 @@ package avalon
 
 import (
 	"appengine"
+	"appengine/datastore"
 	"avalon/auth"
 	. "avalon/data"
 	"avalon/db"
@@ -122,7 +123,9 @@ func game_start(w http.ResponseWriter, r *http.Request, session *sessions.Sessio
 
 	c := appengine.NewContext(r)
 	var game Game
-	err = db.FindOrCreateGame(c, hangoutID, &game, game_factory(player_names, participants))
+	err = datastore.RunInTransaction(c, func(tc appengine.Context) error {
+		return db.FindOrCreateGame(tc, hangoutID, &game, game_factory(player_names, participants))
+	}, nil)
 	if err != nil {
 		return &web.AppError{err, "Error making game", 500}
 	}
@@ -142,7 +145,14 @@ func game_start(w http.ResponseWriter, r *http.Request, session *sessions.Sessio
 	if game.Leader == -1 {
 		game.Leader = 0
 
-		aerr := start_picking(c, &game)
+		var aerr *web.AppError
+		err := datastore.RunInTransaction(c, func(tc appengine.Context) error {
+			aerr = start_picking(tc, &game)
+			return nil
+		}, nil)
+		if err != nil {
+			return &web.AppError{err, "Error starting game (transaction failed?)", 500}
+		}
 		if aerr != nil {
 			return aerr
 		}
@@ -703,7 +713,17 @@ func game_propose(w http.ResponseWriter, r *http.Request, c appengine.Context, s
 		i++
 	}
 
-	do_proposal(c, &game, proposal)
+	var aerr *web.AppError
+	err = datastore.RunInTransaction(c, func(tc appengine.Context) error {
+		aerr = do_proposal(tc, &game, proposal)
+		return nil
+	}, nil)
+	if err != nil {
+		return &web.AppError{err, "Error applying proposal (transaction failed?)", 500}
+	}
+	if aerr != nil {
+		return aerr
+	}
 
 	return game_state(w, r, c, session, game, mypos)
 }
@@ -745,7 +765,15 @@ func game_vote(w http.ResponseWriter, r *http.Request, c appengine.Context, sess
 	}
 
 	vote := votedata.Vote == "approve"
-	aerr := do_vote(c, &game, mypos, vote, &votes)
+
+	var aerr *web.AppError
+	err = datastore.RunInTransaction(c, func(tc appengine.Context) error {
+		aerr = do_vote(c, &game, mypos, vote, &votes)
+		return nil
+	}, nil)
+	if err != nil {
+		return &web.AppError{err, "Error applying proposal (transaction failed?)", 500}
+	}
 	if aerr != nil {
 		return aerr
 	}
@@ -820,7 +848,14 @@ func game_mission(w http.ResponseWriter, r *http.Request, c appengine.Context, s
 		return &web.AppError{errors.New(m), m, 400}
 	}
 
-	aerr := do_action(c, &game, mypos, action, *proposal, &actions)
+	var aerr *web.AppError
+	err = datastore.RunInTransaction(c, func(tc appengine.Context) error {
+		aerr = do_action(c, &game, mypos, action, *proposal, &actions)
+		return nil
+	}, nil)
+	if err != nil {
+		return &web.AppError{err, "Error applying proposal (transaction failed?)", 500}
+	}
 	if aerr != nil {
 		return aerr
 	}
