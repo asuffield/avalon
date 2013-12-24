@@ -1,0 +1,19 @@
+This service stores the following data about you for an indefinite
+period:
+
+ - Your G+ userid number
+ - Any actions you take during the game
+ - Your apparent IP address, user agent string, the time of every
+   request, and possibly your Google account name if appengine felt
+   like logging it
+
+It processes your real name on the client side, but that's mostly
+handled by Google and is never sent to the server-side part of this
+app.
+
+This information is used to run the games and debug problems with the
+software. That's all.
+
+You're probably more interested in Google's privacy policy - they're
+the ones processing your data for the hangout side. This app isn't
+involved.
