@@ -6,7 +6,7 @@ api_version: go1
 handlers:
 - url: /static/(.*)
   static_files: static/\1
-  upload: static/(.*\.(xml|css))
+  upload: static/(.*\.(xml|css|txt))
   secure: always
 
 - url: /admin/.*

@@ -12,7 +12,6 @@ import (
 	"errors"
 	"github.com/gorilla/sessions"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -158,8 +157,7 @@ func game_start(w http.ResponseWriter, r *http.Request, session *sessions.Sessio
 		}
 	}
 
-	log.Printf("Joining game: %+v", game)
-	log.Printf("Dump URL: /admin/dumpgame?game=%s&hangout=%s", url.QueryEscape(game.Id), url.QueryEscape(game.Hangout))
+	c.Infof("Joining game: %+v", game)
 
 	session.Values["gameID"] = game.Id
 
@@ -439,15 +437,17 @@ func ai_votes(c appengine.Context, game *Game) *web.AppError {
 	return nil
 }
 
-func ai_actions(c appengine.Context, game *Game) *web.AppError {
-	mission, err := db.GetMission(c, *game, game.ThisMission)
-	if err != nil {
-		return &web.AppError{err, "Error retrieving mission", 500}
-	}
+func ai_actions(c appengine.Context, game *Game, proposal *Proposal) *web.AppError {
+	// Note that there is only one call site to this function, and
+	// ThisProposal is always the current one, so we don't need to
+	// call db.GetMission - AI mode is just a hack anyway
 
-	proposal, err := db.GetProposal(c, *game, game.ThisMission, *mission)
-	if err != nil {
-		return &web.AppError{err, "Error retrieving proposal", 500}
+	if proposal == nil {
+		var err error
+		proposal, err = db.GetProposal(c, *game, game.ThisMission, game.ThisProposal)
+		if err != nil {
+			return &web.AppError{err, "Error retrieving proposal", 500}
+		}
 	}
 
 	is_present := map[int]bool {}
@@ -497,7 +497,7 @@ func ai_proposal(c appengine.Context, game *Game) *web.AppError {
 	return nil
 }
 
-func start_mission(c appengine.Context, game *Game) *web.AppError {
+func start_mission(c appengine.Context, game *Game, proposal *Proposal) *web.AppError {
 	err := db.StoreMission(c, *game)
 	if err != nil {
 		return &web.AppError{err, "Error storing mission", 500}
@@ -508,7 +508,7 @@ func start_mission(c appengine.Context, game *Game) *web.AppError {
 		return &web.AppError{err, "Error storing game", 500}
 	}
 
-	aerr := ai_actions(c, game)
+	aerr := ai_actions(c, game, proposal)
 	if aerr != nil {
 		return aerr
 	}
@@ -538,7 +538,7 @@ func do_proposal(c appengine.Context, game *Game, proposal Proposal) *web.AppErr
 		game.LastVoteMission = game.ThisMission
 		game.LastVoteProposal = -1
 
-		return start_mission(c, game)
+		return start_mission(c, game, &proposal)
 	}
 
 	return ai_votes(c, game)
@@ -577,7 +577,7 @@ func do_vote(c appengine.Context, game *Game, i int, vote bool, pvotes *map[int]
 
 		if approves > rejects {
 			// Start mission
-			aerr := start_mission(c, game)
+			aerr := start_mission(c, game, nil)
 			if aerr != nil {
 				return aerr
 			}

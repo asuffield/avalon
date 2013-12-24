@@ -107,7 +107,7 @@
     };
 
     App.prototype.showGamePlayers = function() {
-        if (this.gamestate != 'start') {
+        if (this.gamestate != 'start' && this.gamestate != 'gameover') {
             return;
         }
 
@@ -178,7 +178,13 @@
         console.log("gameStart(" + gameid + "), old == " + this.gameid)
         this.this_mission = null;
         this.this_proposal = null;
+        this.leader = null;
         this.gameid = gameid;
+
+        if ("$missionresults" in this.ui) {
+            this.ui.$missionresults.empty();
+        }
+
         this.revealRoles();
         $('.info-box').show();
         this.startInterval();
@@ -260,14 +266,18 @@
 
     App.prototype.resetGameoverMode = function() {
         this.ui.$playercards.empty();
+        $('button.start-game').prop('disabled', false);
     };
 
     App.prototype.gameoverMode = function() {
         this.ui.$result = $('div.gameover-mode span.result');
         this.ui.$playercards = $('div.gameover-mode ul.playercards');
+        this.ui.$start_button = $('button.start-game');
+        this.ui.$gameplayers = $('div.gameover-mode ul.gameplayers');
 
         this.resetMode = this.resetGameoverMode;
         this.resetMode();
+        this.showGamePlayers();
 
         $('div.gameover-mode').show();
     };
