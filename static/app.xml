@@ -28,6 +28,8 @@
 <script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.3/jquery-ui.min.js"></script>
 <script src="//apis.google.com/js/client:plusone.js"></script>
 
+<style>.main-box { display: none; }</style>
+
 <div id="main">
     <div class='info-box game-status'>
         <div class='gameinfo'>Current leader: <span class='leader'/></div>
