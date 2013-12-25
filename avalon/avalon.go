@@ -32,6 +32,8 @@ func init() {
 	http.Handle("/game/vote", web.GameHandler(game_vote))
 	http.Handle("/game/mission", web.GameHandler(game_mission))
 	http.Handle("/game/state", web.GameHandler(game_state))
+	http.Handle("/game/poke", web.GameHandler(game_poke))
+	http.Handle("/admin/fixid", web.AppHandler(dump.FixParticipantId))
 }
 
 type GameStartData struct {
@@ -544,24 +546,7 @@ func do_proposal(c appengine.Context, game *Game, proposal Proposal) *web.AppErr
 	return ai_votes(c, game)
 }
 
-func do_vote(c appengine.Context, game *Game, i int, vote bool, pvotes *map[int]bool) *web.AppError {
-	var votes map[int]bool
-	if (pvotes == nil) {
-		var err error
-		votes, err = db.GetVotes(c, *game, game.ThisMission, game.ThisProposal)
-		if err != nil {
-			return &web.AppError{err, "Error fetching votes", 500}
-		}
-	} else {
-		votes = *pvotes
-	}
-
-	err := db.StoreVote(c, *game, i, vote)
-	if err != nil {
-		return &web.AppError{err, "Error storing mission", 500}
-	}
-	votes[i] = vote
-
+func check_votes(c appengine.Context, game *Game, votes map[int]bool) *web.AppError {
 	//log.Printf("Votes so far: %+v", votes)
 	//log.Printf("Vote count %d, needed %d", len(votes), len(game.Players))
 
@@ -599,6 +584,32 @@ func do_vote(c appengine.Context, game *Game, i int, vote bool, pvotes *map[int]
 	return nil
 }
 
+func do_vote(c appengine.Context, game *Game, i int, vote bool, pvotes *map[int]bool) *web.AppError {
+	var votes map[int]bool
+	if (pvotes == nil) {
+		var err error
+		votes, err = db.GetVotes(c, *game, game.ThisMission, game.ThisProposal)
+		if err != nil {
+			return &web.AppError{err, "Error fetching votes", 500}
+		}
+	} else {
+		votes = *pvotes
+	}
+
+	err := db.StoreVote(c, *game, i, vote)
+	if err != nil {
+		return &web.AppError{err, "Error storing mission", 500}
+	}
+	votes[i] = vote
+
+	aerr := check_votes(c, game, votes)
+	if aerr != nil {
+		return aerr
+	}
+
+	return nil
+}
+
 func count_bools(values map[int]bool) (int, int) {
 	trues := 0
 	falses := 0
@@ -612,19 +623,7 @@ func count_bools(values map[int]bool) (int, int) {
 	return trues, falses
 }
 
-func do_action(c appengine.Context, game *Game, i int, action bool, proposal Proposal, pactions *map[int]bool) *web.AppError {
-	var actions map[int]bool
-	if (pactions == nil) {
-		actions, _ = db.GetActions(c, *game, game.ThisMission)
-	} else {
-		actions = *pactions
-	}
-
-	db.StoreAction(c, *game, i, action)
-	actions[i] = action
-
-	//log.Printf("Actions so far: %+v", actions)
-
+func check_actions(c appengine.Context, game *Game, proposal Proposal, actions map[int]bool) *web.AppError {
 	if len(actions) == game.Setup.Missions[game.ThisMission].Size {
 		_, fails := count_bools(actions)
 
@@ -665,6 +664,27 @@ func do_action(c appengine.Context, game *Game, i int, action bool, proposal Pro
 		if aerr != nil {
 			return aerr
 		}
+	}
+
+	return nil
+}
+
+func do_action(c appengine.Context, game *Game, i int, action bool, proposal Proposal, pactions *map[int]bool) *web.AppError {
+	var actions map[int]bool
+	if (pactions == nil) {
+		actions, _ = db.GetActions(c, *game, game.ThisMission)
+	} else {
+		actions = *pactions
+	}
+
+	db.StoreAction(c, *game, i, action)
+	actions[i] = action
+
+	//log.Printf("Actions so far: %+v", actions)
+
+	aerr := check_actions(c, game, proposal, actions)
+	if aerr != nil {
+		return aerr
 	}
 
 	return nil
@@ -856,6 +876,35 @@ func game_mission(w http.ResponseWriter, r *http.Request, c appengine.Context, s
 	if err != nil {
 		return &web.AppError{err, "Error applying proposal (transaction failed?)", 500}
 	}
+	if aerr != nil {
+		return aerr
+	}
+
+	return game_state(w, r, c, session, game, mypos)
+}
+
+func game_poke(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game Game, mypos int) *web.AppError {
+	votes, err := db.GetVotes(c, game, game.ThisMission, game.ThisProposal)
+	if err != nil {
+		return &web.AppError{err, "Error fetching votes", 500}
+	}
+
+	proposal, err := db.GetProposal(c, game, game.ThisMission, game.ThisProposal)
+	if err != nil {
+		return &web.AppError{err, "Error retrieving proposal", 500}
+	}
+
+	actions, err := db.GetActions(c, game, game.ThisMission)
+	if err != nil {
+		return &web.AppError{err, "Error fetching actions", 500}
+	}
+
+	aerr := check_votes(c, &game, votes)
+	if aerr != nil {
+		return aerr
+	}
+
+	aerr = check_actions(c, &game, *proposal, actions)
 	if aerr != nil {
 		return aerr
 	}

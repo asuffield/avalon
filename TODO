@@ -1,2 +1,69 @@
-Do getactions/storeaction and getvotes/storevote in transactions to
-   stop multiple submissions from causing chaos
+when people leave and rejoin, update the participant ID
+
+unit testing
+
+optimise datastore reads
+
+show game setup in UI
+
+show who picked the mission in mission results
+
+fix picker UI
+
+show who we are waiting for
+
+show last proposal along with last votes
+
+
+This game got stuck:
+
+Game ID: gSQNa7opZ00NOcngnmo39nO43vR0ELDril6fBDwe2bNi91JHGTqEFcRn85X/mRYOF5+6bF8HphdWzXGJm2typw==
+Hangout: AP36tYe9w50Jut_hzlr1J0l58WXlEzfciJv9UupL82APvL7CAFuP
+Start time: 2013-12-24 23:58:51.50931 +0000 UTC
+Setup: {[{2 0} {3 0} {2 0} {3 0} {3 0}] [{false Good} {false Good} {false Good} {true Evil} {true Evil}] 2}
+Players: [hangoutD3A2CAE2_ephemeral.id.google.com^6b0233ef70 hangoutBD4DEB81_ephemeral.id.google.com^1d0903bf46fcd8 hangoutB1624505_ephemeral.id.google.com^9cb71df350 hangout2182F2C3_ephemeral.id.google.com^4b887d36088110 hangoutBD8670BA_ephemeral.id.google.com^86ff6b9295d598]
+Participants: [101624776415196631914 101470030264832794290 111790062319156691732 115443803781532331607 114143260260993447361]
+AIs: []
+Roles: [4 0 1 3 2]
+Leader: 2
+ThisMission: 1
+ThisProposal: 2
+LastVoteMission: 1
+LastVoteProposal: 2
+GoodScore: 1
+EvilScore: 0
+GameOver: false
+Missions:
+Mission: 0xc0138c5a98 Actions: map[0:true 4:true]
+Proposal: &{Leader:0 Players:[0 2]} Votes: map[0:true 1:false 2:true 3:false 4:false]
+Proposal: &{Leader:1 Players:[1 3]} Votes: map[0:false 1:true 2:false 3:true 4:false]
+Proposal: &{Leader:2 Players:[0 2]} Votes: map[0:true 1:false 2:true 3:false 4:false]
+Proposal: &{Leader:3 Players:[1 3]} Votes: map[0:false 1:true 2:false 3:true 4:false]
+Proposal: &{Leader:4 Players:[0 4]} Votes: map[]
+Mission: 0xc0139f1ab8 Actions: map[0:false 1:true 2:true]
+Proposal: &{Leader:0 Players:[0 1 2]} Votes: map[0:false 1:true 2:false 3:false 4:false]
+Proposal: &{Leader:1 Players:[0 1 3]} Votes: map[0:false 1:true 2:false 3:true 4:false]
+Proposal: &{Leader:2 Players:[0 1 2]} Votes: map[0:true 1:true 2:true 3:false 4:false]
+Proposal: <nil> Votes: map[]
+Proposal: <nil> Votes: map[]
+Mission: <nil> Actions: map[]
+Proposal: <nil> Votes: map[]
+Proposal: <nil> Votes: map[]
+Proposal: <nil> Votes: map[]
+Proposal: <nil> Votes: map[]
+Proposal: <nil> Votes: map[]
+Mission: <nil> Actions: map[]
+Proposal: <nil> Votes: map[]
+Proposal: <nil> Votes: map[]
+Proposal: <nil> Votes: map[]
+Proposal: <nil> Votes: map[]
+Proposal: <nil> Votes: map[]
+Mission: <nil> Actions: map[]
+Proposal: <nil> Votes: map[]
+Proposal: <nil> Votes: map[]
+Proposal: <nil> Votes: map[]
+Proposal: <nil> Votes: map[]
+Proposal: <nil> Votes: map[]
+Results [{Players:[0 4] Fails:0 FailsAllowed:0}]
+
+Some kind of timing issue - game/mission submitted simultaneously

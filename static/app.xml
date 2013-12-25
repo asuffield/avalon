@@ -21,12 +21,23 @@
   <Content type="html"><![CDATA[
 <!DOCTYPE html>
 <!-- The hangout API JavaScript. Always include this first -->
+<script src="//hangoutsapi.talkgadget.google.com/hangouts/api/hangout.js"></script>
+
 <link rel="stylesheet" href="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.3/themes/smoothness/jquery-ui.min.css">
 <link rel="stylesheet" href="//trim-mariner-422.appspot.com/static/style.css">
-<script src="//hangoutsapi.talkgadget.google.com/hangouts/api/hangout.js"></script>
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
 <script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.3/jquery-ui.min.js"></script>
-<script src="//apis.google.com/js/client:plusone.js"></script>
+
+<script type="text/javascript">
+(function (window) {
+    var hangouts_ready = $.Deferred();
+    var plusone_ready = $.Deferred();
+    window.plusone_onload = plusone_ready.resolve;
+    gapi.hangout.onApiReady.add(hangouts_ready.resolveWith);
+    window.apis_ready = $.when(hangouts_ready, plusone_ready);
+}(window));
+</script>
+<script src="//apis.google.com/js/client:plusone.js?onload=plusone_onload"></script>
 
 <style>.main-box { display: none; }</style>
 

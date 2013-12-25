@@ -9,7 +9,7 @@
         $('div.main-box').hide();
         $('div.loading-mode').show();
 
-        gapi.hangout.onApiReady.add(this.onApiReady.bind(this));
+        window.apis_ready.done(this.onApiReady.bind(this));
 
         $('button.start-game').click(this.gameStartClick.bind(this));
         $('div.pick-mode form.proposal button').click(this.commitProposal.bind(this));
@@ -23,7 +23,7 @@
         if (this.apiready) {
             return;
         }
-        if (event.isApiReady === true) {
+        if (gapi.hangout.isApiReady()) {
             console.log("API Ready");
 
             this.apiready = true;

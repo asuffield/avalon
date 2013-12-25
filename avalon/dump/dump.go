@@ -84,3 +84,37 @@ func DumpGame(w http.ResponseWriter, r *http.Request, session *sessions.Session)
 
 	return nil
 }
+
+func FixParticipantId(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+	hangout := r.FormValue("hangout")
+	gameid := r.FormValue("game")
+	oldid := r.FormValue("oldid")
+	newid := r.FormValue("newid")
+
+	c := appengine.NewContext(r)
+
+	if hangout == "" || gameid == "" {
+		m := "Could not find game"
+		return &web.AppError{errors.New(m), m, 404}
+	}
+
+	pgame, err := db.RetrieveGame(c, hangout, gameid)
+	if err != nil {
+		return &web.AppError{err, "Could not retrieve game", 500}
+	}
+	if pgame == nil {
+		m := "Could not find game"
+		return &web.AppError{errors.New(m), m, 404}
+	}
+	game := *pgame
+
+	for i := range game.Players {
+		if game.Players[i] == oldid {
+			game.Players[i] = newid
+		}
+	}
+
+	db.StoreGame(c, game)
+
+	return nil
+}
