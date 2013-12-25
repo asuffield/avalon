@@ -1,5 +1,3 @@
-when people leave and rejoin, update the participant ID
-
 unit testing
 
 optimise datastore reads

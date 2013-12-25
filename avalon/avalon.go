@@ -40,20 +40,27 @@ type GameStartData struct {
 	Participants map[string]string `json:"players"`
 }
 
-func shuffle_players(player_names []string) []string {
-	players := make([]string, len(player_names))
-	order := mathrand.Perm(len(player_names))
-	i := 0
-	for _, id := range player_names {
-		players[order[i]] = id
-		i++
-	}
-	return players
+type PlayerData struct {
+	UserID string
+	Name string
 }
 
-func game_factory(player_names []string, participants []string) db.GameFactory {
+func shuffle_players(player_data []PlayerData) ([]string, []string) {
+	players := make([]string, len(player_data))
+	ordered_participants := make([]string, len(player_data))
+	order := mathrand.Perm(len(player_data))
+	i := 0
+	for _, data := range player_data {
+		players[order[i]] = data.Name
+		ordered_participants[order[i]] = data.UserID
+		i++
+	}
+	return players, ordered_participants
+}
+
+func game_factory(player_data []PlayerData) db.GameFactory {
 	return func(gameid string, hangoutid string) Game {
-		players := shuffle_players(player_names)
+		players, ordered_participants := shuffle_players(player_data)
 		ais := make([]int, 0)
 		for i, id := range players {
 			if strings.HasPrefix(id, "ai_") {
@@ -65,7 +72,7 @@ func game_factory(player_names []string, participants []string) db.GameFactory {
 			Id: gameid,
 			Hangout: hangoutid,
 			StartTime: time.Now(),
-			Participants: participants,
+			Participants: ordered_participants,
 			Players: players,
 			AIs: ais,
 			Setup: MakeGameSetup(len(players)),
@@ -105,27 +112,25 @@ func game_start(w http.ResponseWriter, r *http.Request, session *sessions.Sessio
 		return &web.AppError{errors.New(m), m, 500}
 	}
 
-	player_names := make([]string, 0)
-	participants := make([]string, 0)
+	player_data := make([]PlayerData, 0)
 	for k, v := range gamestartdata.Participants {
-		player_names = append(player_names, k)
-		participants = append(participants, v)
+		player_data = append(player_data, PlayerData{UserID: v, Name: k})
 	}
 
 	ai_count := 0
-	if len(participants) < 5 {
-		ai_count = 5 - len(participants)
+	if len(player_data) < 5 {
+		ai_count = 5 - len(player_data)
 	}
 
 	// Fake it for testing purposes
 	for i := 0; i < ai_count; i++ {
-		player_names = append(player_names, "ai_" + strconv.Itoa(i + 1))
+		player_data = append(player_data, PlayerData{UserID: "ai", Name: "ai_" + strconv.Itoa(i + 1)})
 	}
 
 	c := appengine.NewContext(r)
 	var game Game
 	err = datastore.RunInTransaction(c, func(tc appengine.Context) error {
-		return db.FindOrCreateGame(tc, hangoutID, &game, game_factory(player_names, participants))
+		return db.FindOrCreateGame(tc, hangoutID, &game, game_factory(player_data))
 	}, nil)
 	if err != nil {
 		return &web.AppError{err, "Error making game", 500}
@@ -135,10 +140,17 @@ func game_start(w http.ResponseWriter, r *http.Request, session *sessions.Sessio
 	// userID is a participant in the game, before we hand them a
 	// cryptographic cookie with the game in it
 	useridmap := MakePlayerMap(game.Participants)
-	_, ok = useridmap[userID]
+	mypos, ok := useridmap[userID]
 	if !ok {
 		m := "Not a user in the current game"
 		return &web.AppError{errors.New(m), m, 500}
+	}
+
+	// Our participantID might have changed since the game started (if
+	// we left and rejoined) so update it here
+	if game.Players[mypos] != participantID {
+		game.Players[mypos] = participantID
+		db.StoreGame(c, game)
 	}
 
 	// We use leader == -1 as a "start of game" indicator, to make
@@ -167,9 +179,6 @@ func game_start(w http.ResponseWriter, r *http.Request, session *sessions.Sessio
 	if err != nil {
 		log.Println("error saving session:", err)
 	}
-
-	playermap := MakePlayerMap(game.Players)
-	mypos := playermap[participantID]
 
 	return game_state(w, r, c, session, game, mypos)
 }
@@ -200,10 +209,17 @@ func game_join(w http.ResponseWriter, r *http.Request, session *sessions.Session
 	// userID is a participant in the game, before we hand them a
 	// cryptographic cookie with the game in it
 	useridmap := MakePlayerMap(game.Participants)
-	_, ok = useridmap[userID]
+	mypos, ok := useridmap[userID]
 	if !ok {
 		m := "Not a user in the current game"
 		return &web.AppError{errors.New(m), m, 500}
+	}
+
+	// Our participantID might have changed since the game started (if
+	// we left and rejoined) so update it here
+	if game.Players[mypos] != participantID {
+		game.Players[mypos] = participantID
+		db.StoreGame(c, game)
 	}
 
 	session.Values["gameID"] = game.Id
@@ -212,9 +228,6 @@ func game_join(w http.ResponseWriter, r *http.Request, session *sessions.Session
 	if err != nil {
 		log.Println("error saving session:", err)
 	}
-
-	playermap := MakePlayerMap(game.Players)
-	mypos := playermap[participantID]
 
 	return game_state(w, r, c, session, game, mypos)
 }
@@ -420,10 +433,6 @@ func game_state(w http.ResponseWriter, r *http.Request, c appengine.Context, ses
 	}
 
 	return nil
-}
-
-type ProposeData struct {
-	Players []string `json:"players"`
 }
 
 func ai_votes(c appengine.Context, game *Game) *web.AppError {
@@ -690,6 +699,10 @@ func do_action(c appengine.Context, game *Game, i int, action bool, proposal Pro
 	return nil
 }
 
+type ProposeData struct {
+	Players []int `json:"players"`
+}
+
 func game_propose(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game Game, mypos int) *web.AppError {
 	if game.GameOver {
 		m := "This game is over"
@@ -720,18 +733,14 @@ func game_propose(w http.ResponseWriter, r *http.Request, c appengine.Context, s
 		return &web.AppError{errors.New(m), m, 400}
 	}
 
-	playermap := MakePlayerMap(game.Players)
-	proposal := Proposal{ Leader: game.Leader, Players: make([]int, len(proposedata.Players)) }
-	i := 0
-	for _, id := range proposedata.Players {
-		p, ok := playermap[id]
-		if !ok {
-			m := "Invalid user in proposal"
+	for _, pos := range proposedata.Players {
+		if pos < 0 || pos >= len(game.Players) {
+			m := "Invalid posotion in proposal"
 			return &web.AppError{errors.New(m), m, 400}
 		}
-		proposal.Players[i] = p
-		i++
 	}
+
+	proposal := Proposal{ Leader: game.Leader, Players: proposedata.Players }
 
 	var aerr *web.AppError
 	err = datastore.RunInTransaction(c, func(tc appengine.Context) error {

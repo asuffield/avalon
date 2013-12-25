@@ -318,6 +318,7 @@
 
         console.log("commitProposal");
         var $selected = $('input:checked', '#proposal');
+        console.log($selected.length, this.missionsize);
         if ($selected.length != this.missionsize) {
             return false;
         }
@@ -325,7 +326,9 @@
         var that = this;
 
         var players = [];
-        $selected.each(function(i) { players.push( $(this).val() ) });
+        $selected.each(function(i) { players.push( parseInt($(this).val()) ) });
+
+        console.log(players);
 
         this.ui.$commitproposal.prop('disabled', true);
         this.ui.$pick.children('input').prop('disabled', true);
@@ -342,7 +345,7 @@
         }).done(this.handleGameState.bind(this))
             .fail(function() {
                 that.ui.$commitproposal.prop('disabled', false)
-                this.ui.$pick.children('input').prop('disabled', false);
+                that.ui.$pick.children('input').prop('disabled', false);
             });
 
         return false;
@@ -424,7 +427,7 @@
             var $li = $("<li/>");
             var $label = $("<label/>");
             var $input = $("<input type='checkbox'/>");
-            $input.attr('value', id);
+            $input.attr('value', i);
             $li.append($label);
             $label.text(this.playerName(i))
             $label.prepend($input);
