@@ -6,6 +6,7 @@ import (
 	"avalon/data"
 	"avalon/db"
 	"avalon/gameplay"
+	"avalon/gameplay/state"
 	"avalon/web"
 	"encoding/json"
 	"errors"
@@ -231,7 +232,7 @@ func ReqGameStart(w http.ResponseWriter, r *http.Request, session *sessions.Sess
 		log.Println("error saving session:", err)
 	}
 
-	return gameplay.ReqGameState(w, r, c, session, *pgame, mypos)
+	return state.ReqGameState(w, r, c, session, *pgame, mypos)
 }
 
 func ValidateGameJoin(session *sessions.Session) *web.AppError {
@@ -261,7 +262,7 @@ func ReqGameJoin(w http.ResponseWriter, r *http.Request, session *sessions.Sessi
 		log.Println("error saving session:", err)
 	}
 
-	return gameplay.ReqGameState(w, r, c, session, *pgame, mypos)
+	return state.ReqGameState(w, r, c, session, *pgame, mypos)
 }
 
 func ReqGameReveal(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
