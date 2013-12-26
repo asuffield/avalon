@@ -14,7 +14,7 @@ func init() {
 	http.Handle("/game/state", web.GameHandler(ReqGameState))
 }
 
-type GameState struct {
+type GameStateGeneral struct {
 	Id string `json:"gameid"`
 	Players []string `json:"players"`
 	State string `json:"state"`
@@ -26,25 +26,25 @@ type GameState struct {
 }
 
 type GameStatePicking struct {
-	General GameState `json:"general"`
+	General GameStateGeneral `json:"general"`
 	MissionSize int `json:"mission_size"`
 	MissionFailsAllowed int `json:"mission_fails_allowed"`
 }
 
 type GameStateVoting struct {
-	General GameState `json:"general"`
+	General GameStateGeneral `json:"general"`
 	MissionPlayers []string `json:"mission_players"`
 }
 
 type GameStateMission struct {
-	General GameState `json:"general"`
+	General GameStateGeneral `json:"general"`
 	MissionPlayers []string `json:"mission_players"`
 	AllowSuccess bool `json:"allow_success"`
 	AllowFailure bool `json:"allow_failure"`
 }
 
 type GameStateOver struct {
-	General GameState `json:"general"`
+	General GameStateGeneral `json:"general"`
 	Result string `json:"result"`
 	Cards []string `json:"cards"`
 }
@@ -69,7 +69,7 @@ func get_last_vote(c appengine.Context, game data.Game, pvotes *[]bool) error {
 }
 
 func MakeGameState(game data.Game, results []data.MissionResult, proposal *data.Proposal, mission *int, votes []bool, mypos int) interface{} {
-	general := GameState{
+	general := GameStateGeneral{
 		Id: game.Id,
 		Players: game.Players,
 		State: "",
