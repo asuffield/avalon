@@ -12,7 +12,11 @@ func makeGameKey(c appengine.Context, game data.Game) *datastore.Key {
 	return gameKey
 }
 
-func FindGame(c appengine.Context, hangout string) (*data.Game, error) {
+type GameFactory func(string, string) data.Game
+
+// Call with factory == nil to find and never create. With factory !=
+// nil this function always returns a game or an error
+func FindOrCreateGame(c appengine.Context, hangout string, factory GameFactory) (*data.Game, error) {
 	hangoutKey := datastore.NewKey(c, "Hangout", hangout, 0, nil)
 	q := datastore.NewQuery("Game").Ancestor(hangoutKey).Filter("GameOver =", false).Order("-StartTime").Limit(1)
 	var games []data.Game
@@ -23,22 +27,9 @@ func FindGame(c appengine.Context, hangout string) (*data.Game, error) {
 	if len(games) >= 1 {
 		return &games[0], nil
 	}
-	return nil, nil
-}
 
-type GameFactory func(string, string) data.Game
-
-func FindOrCreateGame(c appengine.Context, hangout string, pgame *data.Game, factory GameFactory) error {
-	hangoutKey := datastore.NewKey(c, "Hangout", hangout, 0, nil)
-	q := datastore.NewQuery("Game").Ancestor(hangoutKey).Filter("GameOver =", false).Order("-StartTime").Limit(1)
-	var games []data.Game
-	_, err := q.GetAll(c, &games)
-	if err != nil {
-		return err
-	}
-	if len(games) >= 1 {
-		*pgame = games[0]
-		return nil
+	if factory == nil {
+		return nil, nil
 	}
 
 	var gameid string
@@ -46,7 +37,7 @@ func FindOrCreateGame(c appengine.Context, hangout string, pgame *data.Game, fac
 		gameid = data.RandomString(64)
 		oldgame, err := RetrieveGame(c, hangout, gameid)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if oldgame == nil {
 			break
@@ -57,11 +48,10 @@ func FindOrCreateGame(c appengine.Context, hangout string, pgame *data.Game, fac
 
 	err = StoreGame(c, game)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	*pgame = game
-	return nil
+	return &game, nil
 }
 
 func StoreGame(c appengine.Context, game data.Game) error {
