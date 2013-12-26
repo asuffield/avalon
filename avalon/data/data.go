@@ -7,19 +7,19 @@ import (
 )
 
 type Mission struct {
-	Size int
-	FailsAllowed int
+	Size int `json:"size"`
+	FailsAllowed int `json:"fails_allowed"`
 }
 
 type Card struct {
-	Spy bool
-	Label string
+	Spy bool `json:"spy"`
+	Label string `json:"label"`
 }
 
 type GameSetup struct {
-	Missions []Mission
-	Cards []Card
-	Spies int
+	Missions []Mission `json:"missions"`
+	Cards []Card `json:"cards"`
+	Spies int `json:"spies"`
 }
 
 type Proposal struct {
@@ -27,15 +27,8 @@ type Proposal struct {
 	Players []int
 }
 
-type Game struct {
-	Id string
-	Hangout string
-	StartTime time.Time
-	Setup GameSetup
-	Players []string
-	Participants []string
-	AIs []int
-	Roles []int
+type GameState struct {
+	PlayerIDs []string
 	Leader int
 	ThisMission int
 	ThisProposal int
@@ -46,27 +39,42 @@ type Game struct {
 	GameOver bool
 }
 
+type GameStatic struct {
+	Id string
+	Hangout string
+	StartTime time.Time
+	Setup GameSetup
+	UserIDs []string
+	AIs []int
+	Roles []int
+}
+
+type Game struct {
+	GameStatic
+	State *GameState
+}
+
 type MissionResult struct {
+	Leader int `json:"leader"`
 	Players []int `json:"players"`
 	Fails int `json:"fails"`
 	FailsAllowed int `json:"fails_allowed"`
 }
 
+type VoteResult struct {
+	Mission int `json:"mission"`
+	Proposal int `json:"proposal"`
+	Players []int `json:"players"`
+	Votes []bool `json:"votes"`
+}
+
 func (game Game) LookupUserID(userid string) (int, bool) {
-	for i, v := range game.Participants {
+	for i, v := range game.UserIDs {
 		if v == userid {
 			return i, true
 		}
 	}
 	return -1, false
-}
-
-func MakePlayerMap(players []string) map[string]int {
-	var playermap = map[string]int {}
-	for i, v := range players {
-		playermap[v] = i
-	}
-	return playermap
 }
 
 func MakeGameSetup(players int) GameSetup {

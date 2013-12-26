@@ -72,15 +72,8 @@ func game_factory(gamestartdata GameStartData) db.GameFactory {
 			}
 		}
 
-		game := data.Game{
-			Id: gameid,
-			Hangout: hangoutid,
-			StartTime: time.Now(),
-			Participants: ordered_participants,
-			Players: players,
-			AIs: ais,
-			Setup: data.MakeGameSetup(len(players)),
-			Roles: mathrand.Perm(len(players)),
+		gamestate := data.GameState{
+			PlayerIDs: players,
 			Leader: -1, // See comment in ReqGameStart - this is the "start of game" marker
 			ThisMission: 0,
 			ThisProposal: 0,
@@ -90,9 +83,41 @@ func game_factory(gamestartdata GameStartData) db.GameFactory {
 			EvilScore: 0,
 			GameOver: false,
 		}
+		gamestatic := data.GameStatic{
+			Id: gameid,
+			Hangout: hangoutid,
+			StartTime: time.Now(),
+			UserIDs: ordered_participants,
+			AIs: ais,
+			Setup: data.MakeGameSetup(len(players)),
+			Roles: mathrand.Perm(len(players)),
+		}
 
-		return game
+		return data.Game{gamestatic, &gamestate}
 	}
+}
+
+func DoStartGame(c appengine.Context, game data.Game) *web.AppError {
+	// We use leader == -1 as a "start of game" indicator, to make
+	// sure we go through this step exactly once
+	// This can go away when the AI code is removed
+	if game.State.Leader == -1 {
+		game.State.Leader = 0
+
+		var aerr *web.AppError
+		err := datastore.RunInTransaction(c, func(tc appengine.Context) error {
+			aerr = gameplay.StartPicking(tc, game)
+			return nil
+		}, nil)
+		if err != nil {
+			return &web.AppError{err, "Error starting game (transaction failed?)", 500}
+		}
+		if aerr != nil {
+			return aerr
+		}
+	}
+
+	return nil
 }
 
 func DoGameStartOrJoin(c appengine.Context, session *sessions.Session, factory db.GameFactory) (*data.Game, int, *web.AppError) {
@@ -112,26 +137,17 @@ func DoGameStartOrJoin(c appengine.Context, session *sessions.Session, factory d
 		return nil, -1, &web.AppError{errors.New(m), m, 404}
 	}
 
-	// We use leader == -1 as a "start of game" indicator, to make
-	// sure we go through this step exactly once
-	// This can go away when the AI code is removed
-	if pgame.Leader == -1 {
-		pgame.Leader = 0
-
-		var aerr *web.AppError
-		err := datastore.RunInTransaction(c, func(tc appengine.Context) error {
-			aerr = gameplay.StartPicking(tc, pgame)
-			return nil
-		}, nil)
-		if err != nil {
-			return nil, -1, &web.AppError{err, "Error starting game (transaction failed?)", 500}
-		}
-		if aerr != nil {
-			return nil, -1, aerr
-		}
+	err = db.EnsureGameState(c, pgame)
+	if err != nil {
+		return nil, -1, &web.AppError{err, "Error retrieving game state", 500}
 	}
 
-	mypos, aerr := JoinGame(c, session, pgame)
+	aerr := DoStartGame(c, *pgame)
+	if aerr != nil {
+		return nil, -1, aerr
+	}
+
+	mypos, aerr := JoinGame(c, session, *pgame)
 	if aerr != nil {
 		return nil, -1, aerr
 	}
@@ -139,7 +155,7 @@ func DoGameStartOrJoin(c appengine.Context, session *sessions.Session, factory d
 	return pgame, mypos, nil
 }
 
-func JoinGame(c appengine.Context, session *sessions.Session, game *data.Game) (int, *web.AppError) {
+func JoinGame(c appengine.Context, session *sessions.Session, game data.Game) (int, *web.AppError) {
 	// This step is critical: here we validate that the authenticated
 	// userID is a participant in the game, before we hand them a
 	// cryptographic cookie with the game in it
@@ -153,9 +169,9 @@ func JoinGame(c appengine.Context, session *sessions.Session, game *data.Game) (
 	// Our participantID might have changed since the game started (if
 	// we left and rejoined) so update it here
 	participantID, _ := session.Values["participantID"].(string)
-	if game.Players[mypos] != participantID {
-		game.Players[mypos] = participantID
-		db.StoreGame(c, *game)
+	if game.State.PlayerIDs[mypos] != participantID {
+		game.State.PlayerIDs[mypos] = participantID
+		db.StoreGameState(c, game)
 	}
 
 	session.Values["gameID"] = game.Id
@@ -164,7 +180,7 @@ func JoinGame(c appengine.Context, session *sessions.Session, game *data.Game) (
 }
 
 type GameReveal struct {
-	Players []string `json:"players"`
+	Players []int `json:"players"`
 	Label string `json:"label"`
 }
 
@@ -174,15 +190,14 @@ func GetGameReveal(game data.Game, mypos int) []GameReveal {
 
 	reveals := make([]GameReveal, 1)
 
-	reveals[0] = GameReveal{Label: "Your card: " + game.Setup.Cards[myrole].Label, Players: []string{} }
+	reveals[0] = GameReveal{Label: "Your card: " + game.Setup.Cards[myrole].Label, Players: []int{} }
 
 	if mycard.Spy {
-		players := make([]string, 0)
-		for i := range game.Players {
-			role := game.Roles[i]
+		players := make([]int, 0)
+		for i, role := range game.Roles {
 			card := game.Setup.Cards[role]
 			if card.Spy {
-				players = append(players, game.Players[i])
+				players = append(players, i)
 			}
 		}
 		reveals = append(reveals, GameReveal{

@@ -63,6 +63,10 @@ func ReqDumpGame(w http.ResponseWriter, r *http.Request, session *sessions.Sessi
 		m := "Could not find game"
 		return &web.AppError{errors.New(m), m, 404}
 	}
+	err = db.EnsureGameState(c, pgame)
+	if err != nil {
+		return &web.AppError{err, "Could not retrieve game state", 500}
+	}
 	game := *pgame
 
 	missions := make([]DumpMission, 5)

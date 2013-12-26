@@ -12,6 +12,12 @@ func makeGameKey(c appengine.Context, game data.Game) *datastore.Key {
 	return gameKey
 }
 
+func makeGameStateKey(c appengine.Context, game data.Game) *datastore.Key {
+	hangoutKey := datastore.NewKey(c, "Hangout", game.Hangout, 0, nil)
+	gameKey := datastore.NewKey(c, "GameState", game.Id, 0, hangoutKey)
+	return gameKey
+}
+
 type GameFactory func(string, string) data.Game
 
 // Call with factory == nil to find and never create. With factory !=
@@ -35,7 +41,7 @@ func FindOrCreateGame(c appengine.Context, hangout string, factory GameFactory) 
 	var gameid string
 	for {
 		gameid = data.RandomString(64)
-		oldgame, err := RetrieveGame(c, hangout, gameid)
+		oldgame, err := RetrieveGameStatic(c, hangout, gameid)
 		if err != nil {
 			return nil, err
 		}
@@ -46,7 +52,12 @@ func FindOrCreateGame(c appengine.Context, hangout string, factory GameFactory) 
 
 	game := factory(gameid, hangout)
 
-	err = StoreGame(c, game)
+	err = privStoreGame(c, game)
+	if err != nil {
+		return nil, err
+	}
+
+	err = StoreGameState(c, game)
 	if err != nil {
 		return nil, err
 	}
@@ -54,14 +65,14 @@ func FindOrCreateGame(c appengine.Context, hangout string, factory GameFactory) 
 	return &game, nil
 }
 
-func StoreGame(c appengine.Context, game data.Game) error {
+func privStoreGame(c appengine.Context, game data.Game) error {
 	gameKey := makeGameKey(c, game)
-	_, err := datastore.Put(c, gameKey, &game)
+	_, err := datastore.Put(c, gameKey, &game.GameStatic)
 	return err
 }
 
-func RetrieveGame(c appengine.Context, hangoutid string, gameid string) (*data.Game, error) {
-	var game data.Game
+func RetrieveGameStatic(c appengine.Context, hangoutid string, gameid string) (*data.GameStatic, error) {
+	var game data.GameStatic
 	hangoutKey := datastore.NewKey(c, "Hangout", hangoutid, 0, nil)
 	gameKey := datastore.NewKey(c, "Game", gameid, 0, hangoutKey)
 	err := datastore.Get(c, gameKey, &game)
@@ -71,17 +82,52 @@ func RetrieveGame(c appengine.Context, hangoutid string, gameid string) (*data.G
 	return &game, err
 }
 
+func StoreGameState(c appengine.Context, game data.Game) error {
+	gameStateKey := makeGameStateKey(c, game)
+	_, err := datastore.Put(c, gameStateKey, game.State)
+	return err
+}
+
+func EnsureGameState(c appengine.Context, game *data.Game) error {
+	if game.State != nil {
+		return nil
+	}
+	gameStateKey := makeGameStateKey(c, *game)
+	var state data.GameState
+	err := datastore.Get(c, gameStateKey, &state)
+	if err == nil {
+		game.State = &state
+	}
+	return err
+}
+
+func RetrieveGame(c appengine.Context, hangoutid string, gameid string) (*data.Game, error) {
+	gamestatic, err := RetrieveGameStatic(c, hangoutid, gameid)
+	if err != nil {
+		return nil, err
+	}
+	if gamestatic == nil {
+		return nil, nil
+	}
+	game := data.Game{GameStatic: *gamestatic, State: nil}
+	return &game, nil
+}
+
 func RecentGames(c appengine.Context, limit int) ([]data.Game, error) {
 	q := datastore.NewQuery("Game").Order("-StartTime").Limit(limit)
-	var games []data.Game
-	_, err := q.GetAll(c, &games)
+	var gamestatics []data.GameStatic
+	_, err := q.GetAll(c, &gamestatics)
+	games := make([]data.Game, len(gamestatics))
+	for i := range gamestatics {
+		games[i].GameStatic = gamestatics[i]
+	}
 	return games, err
 }
 
-func StoreProposal(c appengine.Context, game data.Game, proposal data.Proposal) error {
+func StoreProposal(c appengine.Context, game data.Game, m int, p int, proposal data.Proposal) error {
 	gameKey := makeGameKey(c, game)
-	missionKey := datastore.NewKey(c, "Mission", "", int64(1000 + game.ThisMission), gameKey)
-	proposalKey := datastore.NewKey(c, "Proposal", "", int64(1000 + game.ThisProposal), missionKey)
+	missionKey := datastore.NewKey(c, "Mission", "", int64(1000 + m), gameKey)
+	proposalKey := datastore.NewKey(c, "Proposal", "", int64(1000 + p), missionKey)
 	_, err := datastore.Put(c, proposalKey, &proposal)
 	return err
 }
@@ -102,10 +148,10 @@ type BoolStore struct {
 	Value bool
 }
 
-func StoreVote(c appengine.Context, game data.Game, pos int, approve bool) error {
+func StoreVote(c appengine.Context, game data.Game, m int, p int, pos int, approve bool) error {
 	gameKey := makeGameKey(c, game)
-	missionKey := datastore.NewKey(c, "Mission", "", int64(1000 + game.ThisMission), gameKey)
-	proposalKey := datastore.NewKey(c, "Proposal", "", int64(1000 + game.ThisProposal), missionKey)
+	missionKey := datastore.NewKey(c, "Mission", "", int64(1000 + m), gameKey)
+	proposalKey := datastore.NewKey(c, "Proposal", "", int64(1000 + p), missionKey)
 	voteKey := datastore.NewKey(c, "Vote", "", int64(1000 + pos), proposalKey)
 	vote := BoolStore{ approve }
 	_, err := datastore.Put(c, voteKey, &vote)
@@ -131,10 +177,10 @@ type IntStore struct {
 }
 
 // Missions just store the index of the proposal
-func StoreMission(c appengine.Context, game data.Game) error {
+func StoreMission(c appengine.Context, game data.Game, m int, p int) error {
 	gameKey := makeGameKey(c, game)
-	missionKey := datastore.NewKey(c, "Mission", "", int64(1000 + game.ThisMission), gameKey)
-	mission := IntStore{game.ThisProposal}
+	missionKey := datastore.NewKey(c, "Mission", "", int64(1000), gameKey)
+	mission := IntStore{p}
 	_, err := datastore.Put(c, missionKey, &mission)
 	return err
 }
@@ -150,9 +196,9 @@ func GetMission(c appengine.Context, game data.Game, m int) (*int, error) {
 	return &mission.Value, err
 }
 
-func StoreMissionResult(c appengine.Context, game data.Game, result data.MissionResult) error {
+func StoreMissionResult(c appengine.Context, game data.Game, m int, result data.MissionResult) error {
 	gameKey := makeGameKey(c, game)
-	missionKey := datastore.NewKey(c, "MissionResult", "", int64(1000 + game.ThisMission), gameKey)
+	missionKey := datastore.NewKey(c, "MissionResult", "", int64(1000 + m), gameKey)
 	_, err := datastore.Put(c, missionKey, &result)
 	return err
 }
@@ -169,9 +215,9 @@ func GetMissionResults(c appengine.Context, game data.Game) ([]data.MissionResul
 	return resultsordered, err
 }
 
-func StoreAction(c appengine.Context, game data.Game, pos int, success bool) error {
+func StoreAction(c appengine.Context, game data.Game, m int, pos int, success bool) error {
 	gameKey := makeGameKey(c, game)
-	missionKey := datastore.NewKey(c, "Mission", "", int64(1000 + game.ThisMission), gameKey)
+	missionKey := datastore.NewKey(c, "Mission", "", int64(1000 + m), gameKey)
 	actionKey := datastore.NewKey(c, "Action", "", int64(1000 + pos), missionKey)
 	action := BoolStore{ success }
 	_, err := datastore.Put(c, actionKey, &action)

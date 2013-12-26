@@ -28,8 +28,8 @@ type AppError struct {
 func (fn AppHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	session, _ := Store.Get(r, "sessionName")
 
-	if e := fn(w, r, session); e != nil { // e is *AppError, not os.Error.
-		log.Println(e.Err)
+	if e := fn(w, r, session); e != nil {
+		log.Printf("%s: %s", e.Message, e.Err)
 		http.Error(w, e.Message, e.Code)
 	}
 }
@@ -54,7 +54,7 @@ func (fn AjaxHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	session, _ := Store.Get(r, "sessionName")
 
 	if e := fn(w, r, session); e != nil { // e is *AppError, not os.Error.
-		log.Println(e.Err)
+		log.Printf("%s: %s", e.Message, e.Err)
 		http.Error(w, e.Message, e.Code)
 	}
 }
@@ -68,7 +68,6 @@ func gameSetup(w http.ResponseWriter, r *http.Request, c appengine.Context, sess
 
 	userID, _ := session.Values["userID"].(string)
 	hangoutID, _ := session.Values["hangoutID"].(string)
-	participantID, _ := session.Values["participantID"].(string)
 
 	game, err := db.RetrieveGame(c, hangoutID, gameID)
 	if err != nil {
@@ -84,18 +83,10 @@ func gameSetup(w http.ResponseWriter, r *http.Request, c appengine.Context, sess
 		return &AppError{errors.New(m), m, 403}
 	}
 
-	useridmap := data.MakePlayerMap(game.Participants)
-	_, ok = useridmap[userID]
+	pos, ok := game.LookupUserID(userID)
 	if !ok {
 		m := "Not a user in that game"
 		return &AppError{errors.New(m), m, 500}
-	}
-
-	playermap := data.MakePlayerMap(game.Players)
-	pos, ok := playermap[participantID]
-	if !ok {
-		m := "Not a player in that game"
-		return &AppError{errors.New(m), m, 403}
 	}
 
 	*mygame = *game
@@ -115,13 +106,13 @@ func (fn GameHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var mypos int
 	e := gameSetup(w, r, c, session, &game, &mypos)
 	if e != nil {
-		log.Println(e.Err)
+		log.Printf("%s: %s", e.Message, e.Err)
 		http.Error(w, e.Message, e.Code)
 		return
 	}
 
 	if e = fn(w, r, c, session, game, mypos); e != nil { // e is *AppError, not os.Error.
-		log.Println(e.Err)
+		log.Printf("%s: %s", e.Message, e.Err)
 		http.Error(w, e.Message, e.Code)
 	}
 }

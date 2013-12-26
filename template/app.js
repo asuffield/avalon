@@ -531,7 +531,7 @@
 
         for (var i = 0; i < players.length; i++) {
             var $player = $("<li/>");
-            var text = this.playerNameById(players[i]);
+            var text = this.playerName(players[i]);
             if (i in data) {
                 text += ': ' + data[i];
             }
@@ -601,7 +601,12 @@
                 }
             }
         }
-        this.renderPlayers(msg.general.players, lastvote, this.ui.$tableplayers);
+
+        var tableplayers = [];
+        for (var i = 0; i < msg.general.players.length; i++) {
+            tableplayers.push(i);
+        }
+        this.renderPlayers(tableplayers, lastvote, this.ui.$tableplayers);
 
         this.ui.$leader.text(this.playerName(msg.general.leader));
         this.ui.$thismission.text(msg.general.this_mission);

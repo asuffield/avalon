@@ -6,18 +6,18 @@
       Hangout: {{.Game.Hangout}}<br/>
       Start time: {{.Game.StartTime}}<br/>
       Setup: {{.Game.Setup}}<br/>
-      Players: {{.Game.Players}}<br/>
-      Participants: {{.Game.Participants}}<br/>
+      Players: {{.Game.State.PlayerIDs}}<br/>
+      User IDs: {{.Game.UserIDs}}<br/>
       AIs: {{.Game.AIs}}<br/>
       Roles: {{.Game.Roles}}<br/>
-      Leader: {{.Game.Leader}}<br/>
-      ThisMission: {{.Game.ThisMission}}<br/>
-      ThisProposal: {{.Game.ThisProposal}}<br/>
-      LastVoteMission: {{.Game.LastVoteMission}}<br/>
-      LastVoteProposal: {{.Game.LastVoteProposal}}<br/>
-      GoodScore: {{.Game.GoodScore}}<br/>
-      EvilScore: {{.Game.EvilScore}}<br/>
-      GameOver: {{.Game.GameOver}}<br/>
+      Leader: {{.Game.State.Leader}}<br/>
+      ThisMission: {{.Game.State.ThisMission}}<br/>
+      ThisProposal: {{.Game.State.ThisProposal}}<br/>
+      LastVoteMission: {{.Game.State.LastVoteMission}}<br/>
+      LastVoteProposal: {{.Game.State.LastVoteProposal}}<br/>
+      GoodScore: {{.Game.State.GoodScore}}<br/>
+      EvilScore: {{.Game.State.EvilScore}}<br/>
+      GameOver: {{.Game.State.GameOver}}<br/>
     </div>
     <div>
       Missions:

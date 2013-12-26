@@ -33,12 +33,12 @@ type GameStatePicking struct {
 
 type GameStateVoting struct {
 	General GameStateGeneral `json:"general"`
-	MissionPlayers []string `json:"mission_players"`
+	MissionPlayers []int `json:"mission_players"`
 }
 
 type GameStateMission struct {
 	General GameStateGeneral `json:"general"`
-	MissionPlayers []string `json:"mission_players"`
+	MissionPlayers []int `json:"mission_players"`
 	AllowSuccess bool `json:"allow_success"`
 	AllowFailure bool `json:"allow_failure"`
 }
@@ -49,17 +49,17 @@ type GameStateOver struct {
 	Cards []string `json:"cards"`
 }
 
-func get_last_vote(c appengine.Context, game data.Game, pvotes *[]bool) error {
-	if game.LastVoteMission == -1 || game.LastVoteProposal == -1 {
+func get_last_vote(c appengine.Context, game data.Game, gamestate data.GameState, pvotes *[]bool) error {
+	if gamestate.LastVoteMission == -1 || gamestate.LastVoteProposal == -1 {
 		return nil
 	}
 
-	votedata, err := db.GetVotes(c, game, game.LastVoteMission, game.LastVoteProposal)
+	votedata, err := db.GetVotes(c, game, gamestate.LastVoteMission, gamestate.LastVoteProposal)
 	if err != nil {
 		return err
 	}
 
-	votes := make([]bool, len(game.Players))
+	votes := make([]bool, len(gamestate.PlayerIDs))
 	for i, v := range(votedata) {
 		votes[i] = v
 	}
@@ -71,26 +71,25 @@ func get_last_vote(c appengine.Context, game data.Game, pvotes *[]bool) error {
 func MakeGameState(game data.Game, results []data.MissionResult, proposal *data.Proposal, mission *int, votes []bool, mypos int) interface{} {
 	general := GameStateGeneral{
 		Id: game.Id,
-		Players: game.Players,
+		Players: game.State.PlayerIDs,
 		State: "",
-		Leader: game.Leader,
+		Leader: game.State.Leader,
 		Results: results,
 		LastVotes: votes,
-		ThisMission: game.ThisMission + 1,
-		ThisProposal: game.ThisProposal + 1,
+		ThisMission: game.State.ThisMission + 1,
+		ThisProposal: game.State.ThisProposal + 1,
 	}
 
-	if game.GameOver {
+	if game.State.GameOver {
 		var result string
-		if game.GoodScore >= 3 {
+		if game.State.GoodScore >= 3 {
 			result = "Good has won"
 		} else {
 			result = "Evil has won"
 		}
 
-		cards := make([]string, len(game.Players))
-		for i := range game.Players {
-			role := game.Roles[i]
+		cards := make([]string, len(game.Roles))
+		for i, role := range game.Roles {
 			cards[i] = game.Setup.Cards[role].Label
 		}
 
@@ -106,14 +105,14 @@ func MakeGameState(game data.Game, results []data.MissionResult, proposal *data.
 		general.State = "picking"
 		return GameStatePicking{
 			General: general,
-			MissionSize: game.Setup.Missions[game.ThisMission].Size,
-			MissionFailsAllowed: game.Setup.Missions[game.ThisMission].FailsAllowed,
+			MissionSize: game.Setup.Missions[game.State.ThisMission].Size,
+			MissionFailsAllowed: game.Setup.Missions[game.State.ThisMission].FailsAllowed,
 		}
 	}
 
-	missionplayers := make([]string, len(proposal.Players))
+	missionplayers := make([]int, len(proposal.Players))
 	for i, n := range proposal.Players {
-		missionplayers[i] = game.Players[n]
+		missionplayers[i] = n
 	}
 
 	if mission == nil {
@@ -136,14 +135,19 @@ func MakeGameState(game data.Game, results []data.MissionResult, proposal *data.
 }
 
 func ReqGameState(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
+	err := db.EnsureGameState(c, &game)
+	if err != nil {
+		return &web.AppError{err, "Error retrieving game state", 500}
+	}
+
 	results, err := db.GetMissionResults(c, game)
 	if err != nil {
 		return &web.AppError{err, "Error retrieving mission results", 500}
 	}
 
 	var proposal *data.Proposal
-	if !game.GameOver {
-		proposal, err = db.GetProposal(c, game, game.ThisMission, game.ThisProposal)
+	if !game.State.GameOver {
+		proposal, err = db.GetProposal(c, game, game.State.ThisMission, game.State.ThisProposal)
 		if err != nil {
 			return &web.AppError{err, "Error retrieving proposal", 500}
 		}
@@ -151,14 +155,14 @@ func ReqGameState(w http.ResponseWriter, r *http.Request, c appengine.Context, s
 
 	var mission *int
 	if proposal != nil {
-		mission, err = db.GetMission(c, game, game.ThisMission)
+		mission, err = db.GetMission(c, game, game.State.ThisMission)
 		if err != nil {
 			return &web.AppError{err, "Error retrieving mission", 500}
 		}
 	}
 
 	var votes []bool
-	err = get_last_vote(c, game, &votes)
+	err = get_last_vote(c, game, *game.State, &votes)
 	if err != nil {
 		return &web.AppError{err, "Error retrieving last vote", 500}
 	}
