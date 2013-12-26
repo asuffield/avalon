@@ -19,9 +19,9 @@ import (
 )
 
 func init() {
-	http.Handle("/game/start", web.AjaxHandler(game_start))
-	http.Handle("/game/join", web.AjaxHandler(game_join))
-	http.Handle("/game/reveal", web.GameHandler(game_reveal))
+	http.Handle("/game/start", web.AjaxHandler(ReqGameStart))
+	http.Handle("/game/join", web.AjaxHandler(ReqGameJoin))
+	http.Handle("/game/reveal", web.GameHandler(ReqGameReveal))
 }
 
 type GameStartData struct {
@@ -65,7 +65,7 @@ func game_factory(player_data []PlayerData) db.GameFactory {
 			AIs: ais,
 			Setup: data.MakeGameSetup(len(players)),
 			Roles: mathrand.Perm(len(players)),
-			Leader: -1, // See comment in game_start - this is the "start of game" marker
+			Leader: -1, // See comment in ReqGameStart - this is the "start of game" marker
 			ThisMission: 0,
 			ThisProposal: 0,
 			LastVoteMission: -1,
@@ -79,7 +79,7 @@ func game_factory(player_data []PlayerData) db.GameFactory {
 	}
 }
 
-func game_start(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+func ReqGameStart(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
 	userID, ok := session.Values["userID"].(string)
 	if !ok || 0 == len(userID) {
 		m := "Not authenticated via oauth"
@@ -170,7 +170,7 @@ func game_start(w http.ResponseWriter, r *http.Request, session *sessions.Sessio
 	return gameplay.ReqGameState(w, r, c, session, game, mypos)
 }
 
-func game_join(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+func ReqGameJoin(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
 	userID, ok := session.Values["userID"].(string)
 	if !ok || 0 == len(userID) {
 		m := "Not authenticated via oauth"
@@ -223,7 +223,7 @@ type GameReveal struct {
 	Label string `json:"label"`
 }
 
-func game_reveal(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
+func ReqGameReveal(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
 	myrole := game.Roles[mypos]
 	mycard := game.Setup.Cards[myrole]
 

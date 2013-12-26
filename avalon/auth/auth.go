@@ -15,9 +15,9 @@ import (
 )
 
 func init() {
-	http.Handle("/app.js", web.AppHandler(AppJS))
-	http.Handle("/appdev.js", web.AppHandler(AppDevJS))
-	http.Handle("/auth/token", web.AjaxHandler(AuthToken))
+	http.Handle("/app.js", web.AppHandler(ReqAppJS))
+	http.Handle("/appdev.js", web.AppHandler(ReqAppDevJS))
+	http.Handle("/auth/token", web.AjaxHandler(ReqAuthToken))
 }
 
 const (
@@ -45,7 +45,7 @@ type TokenInfo struct {
 	AccessType string `json:"access_type"`
 }
 
-func make_AppJS(w http.ResponseWriter, r *http.Request, session *sessions.Session, clientID string, serverPath string) *web.AppError {
+func make_ReqAppJS(w http.ResponseWriter, r *http.Request, session *sessions.Session, clientID string, serverPath string) *web.AppError {
 	// Create a state token to prevent request forgery and store it in the session
 	// for later validation
 	state := data.RandomString(64)
@@ -72,12 +72,12 @@ func make_AppJS(w http.ResponseWriter, r *http.Request, session *sessions.Sessio
 	return nil
 }
 
-func AppJS(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
-	return make_AppJS(w, r, session, avalonClientID, avalonServerPath)
+func ReqAppJS(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+	return make_ReqAppJS(w, r, session, avalonClientID, avalonServerPath)
 }
 
-func AppDevJS(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
-	return make_AppJS(w, r, session, avalonDevClientID, avalonDevServerPath)
+func ReqAppDevJS(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+	return make_ReqAppJS(w, r, session, avalonDevClientID, avalonDevServerPath)
 }
 
 func fetch_token_info(c appengine.Context, token string) (*TokenInfo, *web.AppError) {
@@ -101,7 +101,7 @@ func fetch_token_info(c appengine.Context, token string) (*TokenInfo, *web.AppEr
 	return &tokeninfo, nil
 }
 
-func AuthToken(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+func ReqAuthToken(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
 	state := session.Values["state"].(string)
 
 	if r.FormValue("state") != state {
