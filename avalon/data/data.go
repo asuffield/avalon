@@ -52,6 +52,15 @@ type MissionResult struct {
 	FailsAllowed int `json:"fails_allowed"`
 }
 
+func (game Game) LookupUserID(userid string) (int, bool) {
+	for i, v := range game.Participants {
+		if v == userid {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
 func MakePlayerMap(players []string) map[string]int {
 	var playermap = map[string]int {}
 	for i, v := range players {

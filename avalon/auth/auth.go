@@ -14,6 +14,12 @@ import (
 	"text/template"
 )
 
+func init() {
+	http.Handle("/app.js", web.AppHandler(AppJS))
+	http.Handle("/appdev.js", web.AppHandler(AppDevJS))
+	http.Handle("/auth/token", web.AjaxHandler(AuthToken))
+}
+
 const (
 	avalonClientID = "834761542099-061td9hu3vl1mochrijcvrrt1e4egvq9.apps.googleusercontent.com"
 	avalonServerPath = "https://trim-mariner-422.appspot.com/"

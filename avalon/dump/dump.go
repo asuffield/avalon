@@ -11,6 +11,11 @@ import (
 	"net/http"
 )
 
+func init() {
+	http.Handle("/admin/dumpgame", web.AppHandler(DumpGame))
+	http.Handle("/admin/fixid", web.AppHandler(FixParticipantId))
+}
+
 type DumpProposal struct {
 	Proposal *data.Proposal
 	Votes map[int]bool
