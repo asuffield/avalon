@@ -68,22 +68,7 @@ func get_last_vote(c appengine.Context, game data.Game, pvotes *[]bool) error {
 	return nil
 }
 
-func ReqGameState(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
-	myrole := game.Roles[mypos]
-
-	proposal, err := db.GetProposal(c, game, game.ThisMission, game.ThisProposal)
-	if err != nil {
-		return &web.AppError{err, "Error retrieving proposal", 500}
-	}
-
-	results, err := db.GetMissionResults(c, game)
-	if err != nil {
-		return &web.AppError{err, "Error retrieving mission results", 500}
-	}
-
-	var votes []bool
-	err = get_last_vote(c, game, &votes)
-
+func MakeGameState(game data.Game, results []data.MissionResult, proposal *data.Proposal, mission *int, votes []bool, mypos int) interface{} {
 	general := GameState{
 		Id: game.Id,
 		Players: game.Players,
@@ -94,8 +79,6 @@ func ReqGameState(w http.ResponseWriter, r *http.Request, c appengine.Context, s
 		ThisMission: game.ThisMission + 1,
 		ThisProposal: game.ThisProposal + 1,
 	}
-
-	var state interface{}
 
 	if game.GameOver {
 		var result string
@@ -112,50 +95,75 @@ func ReqGameState(w http.ResponseWriter, r *http.Request, c appengine.Context, s
 		}
 
 		general.State = "gameover"
-		state = GameStateOver{
+		return GameStateOver{
 			General: general,
 			Result: result,
 			Cards: cards,
 		}
-	} else if proposal == nil {
-		if err != nil {
-			return &web.AppError{err, "Error retrieving votes", 500}
-		}
+	}
 
+	if proposal == nil {
 		general.State = "picking"
-		state = GameStatePicking{
+		return GameStatePicking{
 			General: general,
 			MissionSize: game.Setup.Missions[game.ThisMission].Size,
 			MissionFailsAllowed: game.Setup.Missions[game.ThisMission].FailsAllowed,
 		}
-	} else {
-		mission, err := db.GetMission(c, game, game.ThisMission)
+	}
+
+	missionplayers := make([]string, len(proposal.Players))
+	for i, n := range proposal.Players {
+		missionplayers[i] = game.Players[n]
+	}
+
+	if mission == nil {
+		general.State = "voting"
+		return GameStateVoting{
+			General: general,
+			MissionPlayers: missionplayers,
+		}
+	}
+
+	general.State = "mission"
+
+	myrole := game.Roles[mypos]
+	return GameStateMission{
+		General: general,
+		MissionPlayers: missionplayers,
+		AllowSuccess: true,
+		AllowFailure: game.Setup.Cards[myrole].Spy,
+	}
+}
+
+func ReqGameState(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
+	results, err := db.GetMissionResults(c, game)
+	if err != nil {
+		return &web.AppError{err, "Error retrieving mission results", 500}
+	}
+
+	var proposal *data.Proposal
+	if !game.GameOver {
+		proposal, err = db.GetProposal(c, game, game.ThisMission, game.ThisProposal)
+		if err != nil {
+			return &web.AppError{err, "Error retrieving proposal", 500}
+		}
+	}
+
+	var mission *int
+	if proposal != nil {
+		mission, err = db.GetMission(c, game, game.ThisMission)
 		if err != nil {
 			return &web.AppError{err, "Error retrieving mission", 500}
 		}
-
-		missionplayers := make([]string, len(proposal.Players))
-		for i, n := range proposal.Players {
-			missionplayers[i] = game.Players[n]
-		}
-
-		if mission == nil {
-			general.State = "voting"
-			state = GameStateVoting{
-				General: general,
-				MissionPlayers: missionplayers,
-			}
-		} else {
-			general.State = "mission"
-
-			state = GameStateMission{
-				General: general,
-				MissionPlayers: missionplayers,
-				AllowSuccess: true,
-				AllowFailure: game.Setup.Cards[myrole].Spy,
-			}
-		}
 	}
+
+	var votes []bool
+	err = get_last_vote(c, game, &votes)
+	if err != nil {
+		return &web.AppError{err, "Error retrieving last vote", 500}
+	}
+
+	state := MakeGameState(game, results, proposal, mission, votes, mypos)
 
 	w.Header().Set("Content-type", "application/json")
 	err = json.NewEncoder(w).Encode(&state)
