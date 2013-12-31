@@ -16,11 +16,12 @@ func init() {
 
 type GameStateGeneral struct {
 	Id string `json:"gameid"`
+	Setup data.GameSetup `json:"setup"`
 	Players []string `json:"players"`
 	State string `json:"state"`
 	Leader int `json:"leader"`
-	Results []data.MissionResult `json:"mission_results"`
-	LastVotes []bool `json:"last_votes"`
+	Results []*data.MissionResult `json:"mission_results"`
+	Votes []data.VoteResult `json:"votes"`
 	ThisMission int `json:"this_mission"`
 	ThisProposal int `json:"this_proposal"`
 }
@@ -34,11 +35,13 @@ type GameStatePicking struct {
 type GameStateVoting struct {
 	General GameStateGeneral `json:"general"`
 	MissionPlayers []int `json:"mission_players"`
+	VotedPlayers []bool `json:"voted_players"`
 }
 
 type GameStateMission struct {
 	General GameStateGeneral `json:"general"`
 	MissionPlayers []int `json:"mission_players"`
+	ActedPlayers []bool `json:"acted_players"`
 	AllowSuccess bool `json:"allow_success"`
 	AllowFailure bool `json:"allow_failure"`
 }
@@ -46,46 +49,38 @@ type GameStateMission struct {
 type GameStateOver struct {
 	General GameStateGeneral `json:"general"`
 	Result string `json:"result"`
+	Comment string `json:"comment"`
 	Cards []string `json:"cards"`
 }
 
-func get_last_vote(c appengine.Context, game data.Game, gamestate data.GameState, pvotes *[]bool) error {
-	if gamestate.LastVoteMission == -1 || gamestate.LastVoteProposal == -1 {
-		return nil
-	}
-
-	votedata, err := db.GetVotes(c, game, gamestate.LastVoteMission, gamestate.LastVoteProposal)
-	if err != nil {
-		return err
-	}
-
-	votes := make([]bool, len(gamestate.PlayerIDs))
-	for i, v := range(votedata) {
-		votes[i] = v
-	}
-	*pvotes = votes
-
-	return nil
-}
-
-func MakeGameState(game data.Game, results []data.MissionResult, proposal *data.Proposal, mission *int, votes []bool, mypos int) interface{} {
+func MakeGameState(game data.Game, playerids []string, results []*data.MissionResult, proposal *data.Proposal, actions *data.Actions, votes []data.VoteResult, mypos int) interface{} {
 	general := GameStateGeneral{
 		Id: game.Id,
-		Players: game.State.PlayerIDs,
+		Setup: game.Setup,
+		Players: playerids,
 		State: "",
 		Leader: game.State.Leader,
 		Results: results,
-		LastVotes: votes,
+		Votes: votes,
 		ThisMission: game.State.ThisMission + 1,
 		ThisProposal: game.State.ThisProposal + 1,
 	}
 
 	if game.State.GameOver {
 		var result string
+		var comment string
 		if game.State.GoodScore >= 3 {
 			result = "Good has won"
 		} else {
 			result = "Evil has won"
+		}
+
+		myrole := game.Roles[mypos]
+		mycard := game.Setup.Cards[myrole]
+		if mycard.Spy == (game.State.EvilScore >= 3) {
+			comment = "Victory!"
+		} else {
+			comment = "Defeat!"
 		}
 
 		cards := make([]string, len(game.Roles))
@@ -97,6 +92,7 @@ func MakeGameState(game data.Game, results []data.MissionResult, proposal *data.
 		return GameStateOver{
 			General: general,
 			Result: result,
+			Comment: comment,
 			Cards: cards,
 		}
 	}
@@ -115,11 +111,12 @@ func MakeGameState(game data.Game, results []data.MissionResult, proposal *data.
 		missionplayers[i] = n
 	}
 
-	if mission == nil {
+	if actions == nil {
 		general.State = "voting"
 		return GameStateVoting{
 			General: general,
 			MissionPlayers: missionplayers,
+			VotedPlayers: proposal.Voted,
 		}
 	}
 
@@ -129,15 +126,21 @@ func MakeGameState(game data.Game, results []data.MissionResult, proposal *data.
 	return GameStateMission{
 		General: general,
 		MissionPlayers: missionplayers,
+		ActedPlayers: actions.Acted,
 		AllowSuccess: true,
 		AllowFailure: game.Setup.Cards[myrole].Spy,
 	}
 }
 
 func ReqGameState(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
-	err := db.EnsureGameState(c, &game)
+	err := db.EnsureGameState(c, &game, false)
 	if err != nil {
 		return &web.AppError{err, "Error retrieving game state", 500}
+	}
+
+	playerids, err := db.GetPlayerIDs(c, game)
+	if err != nil {
+		return &web.AppError{err, "Error retrieving player ids", 500}
 	}
 
 	results, err := db.GetMissionResults(c, game)
@@ -145,29 +148,34 @@ func ReqGameState(w http.ResponseWriter, r *http.Request, c appengine.Context, s
 		return &web.AppError{err, "Error retrieving mission results", 500}
 	}
 
-	var proposal *data.Proposal
-	if !game.State.GameOver {
-		proposal, err = db.GetProposal(c, game, game.State.ThisMission, game.State.ThisProposal)
-		if err != nil {
-			return &web.AppError{err, "Error retrieving proposal", 500}
-		}
-	}
-
-	var mission *int
-	if proposal != nil {
-		mission, err = db.GetMission(c, game, game.State.ThisMission)
-		if err != nil {
-			return &web.AppError{err, "Error retrieving mission", 500}
-		}
-	}
-
-	var votes []bool
-	err = get_last_vote(c, game, *game.State, &votes)
+	votes, err := db.GetVoteResults(c, game)
 	if err != nil {
-		return &web.AppError{err, "Error retrieving last vote", 500}
+		return &web.AppError{err, "Error retrieving vote results", 500}
 	}
 
-	state := MakeGameState(game, results, proposal, mission, votes, mypos)
+	var proposal *data.Proposal
+	var actions *data.Actions
+	if !game.State.GameOver {
+		if game.State.HaveProposal {
+			// Note that this is the only place we use the memcached
+			// proposal - it might be a little out of date if a memcache
+			// store operation fails, and that's ok because the only
+			// update we send is whether people have voted yet
+			proposal, err = db.GetProposal(c, false, game, game.State.ThisMission, game.State.ThisProposal)
+			if err != nil {
+				return &web.AppError{err, "Error retrieving proposal", 500}
+			}
+		}
+
+		if game.State.HaveActions {
+			actions, err = db.GetActions(c, false, game, game.State.ThisMission)
+			if err != nil {
+				return &web.AppError{err, "Error retrieving actions", 500}
+			}
+		}
+	}
+
+	state := MakeGameState(game, playerids, results, proposal, actions, votes, mypos)
 
 	w.Header().Set("Content-type", "application/json")
 	err = json.NewEncoder(w).Encode(&state)

@@ -5,19 +5,25 @@
       Game ID: {{.Game.Id}}<br/>
       Hangout: {{.Game.Hangout}}<br/>
       Start time: {{.Game.StartTime}}<br/>
-      Setup: {{.Game.Setup}}<br/>
-      Players: {{.Game.State.PlayerIDs}}<br/>
+      Setup.Missions: {{.Game.Setup.Missions}}<br/>
+      Setup.Cards: {{.Game.Setup.Cards}}<br/>
+      Setup.Spies: {{.Game.Setup.Spies}}<br/>
       User IDs: {{.Game.UserIDs}}<br/>
       AIs: {{.Game.AIs}}<br/>
       Roles: {{.Game.Roles}}<br/>
       Leader: {{.Game.State.Leader}}<br/>
       ThisMission: {{.Game.State.ThisMission}}<br/>
       ThisProposal: {{.Game.State.ThisProposal}}<br/>
-      LastVoteMission: {{.Game.State.LastVoteMission}}<br/>
-      LastVoteProposal: {{.Game.State.LastVoteProposal}}<br/>
+      HaveProposal: {{.Game.State.HaveProposal}}<br/>
+      HaveActions: {{.Game.State.HaveActions}}<br/>
+      MissionsComplete: {{.Game.State.MissionsComplete}}<br/>
+      ThisVote: {{.Game.State.ThisVote}}<br/>
       GoodScore: {{.Game.State.GoodScore}}<br/>
       EvilScore: {{.Game.State.EvilScore}}<br/>
       GameOver: {{.Game.State.GameOver}}<br/>
+    </div>
+    <div>
+      Player IDs: {{.PlayerIDs}}<br/>
     </div>
     <div>
       Missions:
@@ -25,13 +31,14 @@
       {{range .Missions}}
       <li>
         <div>
-          Mission: {{printf "%+v" .Mission}}
-          Actions: {{printf "%+v" .Actions}}
+          {{if .Actions}}
+          Actions: {{.Actions}}
+          {{end}}
+          Proposals:
           <ol>
           {{range .Proposals}}
           <li>
             Proposal: {{printf "%+v" .Proposal}}
-            Votes: {{printf "%+v" .Votes}}
           </li>
           {{end}}
           </ol>
@@ -40,6 +47,32 @@
       {{end}}
       </ol>
     </div>
-    <p>Results {{printf "%+v" .Results}}</p>
+    <div>Mission results:
+      <ol>
+        {{range .MissionResults}}
+        <li>
+          Mission: {{.Mission}}
+          Proposal: {{.Proposal}}
+          Leader: {{.Leader}}
+          Players: {{.Players}}
+          Fails: {{.Fails}}/{{.FailsAllowed}}
+        </li>
+        {{end}}
+      </ol>
+    </div>
+    <div>Vote results:
+      <ol>
+        {{range .VoteResults}}
+        <li>
+          Index: {{.Index}}
+          Mission: {{.Mission}}
+          Proposal: {{.Proposal}}
+          Leader: {{.Leader}}
+          Players: {{.Players}}
+          Votes: {{.Votes}}
+        </li>
+        {{end}}
+      </ol>
+    </div>
   </body>
 </html>

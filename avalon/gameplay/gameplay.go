@@ -2,10 +2,10 @@ package gameplay
 
 import (
 	"appengine"
-	"appengine/datastore"
 	"avalon/data"
 	"avalon/db"
 	"avalon/gameplay/state"
+	"avalon/db/trans"
 	"avalon/web"
 	"encoding/json"
 	"errors"
@@ -21,10 +21,13 @@ func init() {
 	http.Handle("/game/poke", web.GameHandler(ReqGamePoke))
 }
 
-func count_score(results []data.MissionResult) (int, int) {
+func count_score(results []*data.MissionResult) (int, int) {
 	good := 0
 	evil := 0
 	for _, result := range results {
+		if result == nil {
+			continue
+		}
 		if result.Fails > result.FailsAllowed {
 			evil++
 		} else {
@@ -35,11 +38,11 @@ func count_score(results []data.MissionResult) (int, int) {
 	return good, evil
 }
 
-func ai_votes(c appengine.Context, game data.Game) *web.AppError {
+func ai_votes(c appengine.Context, game data.Game, proposal *data.Proposal) *web.AppError {
 	for _, i := range game.AIs {
 		vote := mathrand.Intn(2) == 1
 		//log.Printf("AI %s vote: %v", game.Players[i], vote)
-		aerr := do_vote(c, game, i, vote, nil)
+		aerr := do_vote(c, game, i, vote, proposal)
 		if aerr != nil {
 			return aerr
 		}
@@ -48,19 +51,7 @@ func ai_votes(c appengine.Context, game data.Game) *web.AppError {
 	return nil
 }
 
-func ai_actions(c appengine.Context, game data.Game, proposal *data.Proposal) *web.AppError {
-	// Note that there is only one call site to this function, and
-	// ThisProposal is always the current one, so we don't need to
-	// call db.GetMission - AI mode is just a hack anyway
-
-	if proposal == nil {
-		var err error
-		proposal, err = db.GetProposal(c, game, game.State.ThisMission, game.State.ThisProposal)
-		if err != nil {
-			return &web.AppError{err, "Error retrieving proposal", 500}
-		}
-	}
-
+func ai_actions(c appengine.Context, game data.Game, proposal data.Proposal, actions *data.Actions) *web.AppError {
 	is_present := map[int]bool {}
 	for _, i := range proposal.Players {
 		is_present[i] = true
@@ -72,7 +63,7 @@ func ai_actions(c appengine.Context, game data.Game, proposal *data.Proposal) *w
 			card := game.Setup.Cards[role]
 			action := !card.Spy
 			//log.Printf("AI %s action: %v", game.Players[i], action)
-			aerr := do_action(c, game, i, action, *proposal, nil)
+			aerr := do_action(c, game, i, action, proposal, actions)
 			if aerr != nil {
 				return aerr
 			}
@@ -96,9 +87,8 @@ func ai_proposal(c appengine.Context, game data.Game) *web.AppError {
 				}
 				players[j+1] = pos
 			}
-			proposal := data.Proposal{ Leader: game.State.Leader, Players: players }
-			//log.Printf("AI %s proposing: %v", game.Players[i], proposal)
-			aerr := do_proposal(c, game, proposal)
+			//log.Printf("AI %s proposing: %v", game.Players[i], players)
+			aerr := do_proposal(c, game, players)
 			if aerr != nil {
 				return aerr
 			}
@@ -108,18 +98,26 @@ func ai_proposal(c appengine.Context, game data.Game) *web.AppError {
 	return nil
 }
 
-func start_mission(c appengine.Context, game data.Game, proposal *data.Proposal) *web.AppError {
-	err := db.StoreMission(c, game, game.State.ThisMission, game.State.ThisProposal)
+func start_mission(c appengine.Context, game data.Game, proposal data.Proposal) *web.AppError {
+	mission_size := game.Setup.Missions[game.State.ThisMission].Size
+	actions := data.Actions{
+		Mission: game.State.ThisMission,
+		Proposal: game.State.ThisProposal,
+		Actions: make([]bool, mission_size),
+		Acted: make([]bool, mission_size),
+	}
+	err := db.StoreActions(c, game, game.State.ThisMission, actions)
 	if err != nil {
-		return &web.AppError{err, "Error storing mission", 500}
+		return &web.AppError{err, "Error storing actions object", 500}
 	}
 
+	game.State.HaveActions = true
 	err = db.StoreGameState(c, game)
 	if err != nil {
-		return &web.AppError{err, "Error storing game", 500}
+		return &web.AppError{err, "Error storing game state", 500}
 	}
 
-	aerr := ai_actions(c, game, proposal)
+	aerr := ai_actions(c, game, proposal, &actions)
 	if aerr != nil {
 		return aerr
 	}
@@ -128,55 +126,86 @@ func start_mission(c appengine.Context, game data.Game, proposal *data.Proposal)
 }
 
 func StartPicking(c appengine.Context, game data.Game) *web.AppError {
-	err := db.EnsureGameState(c, &game)
-	if err != nil {
-		return &web.AppError{err, "Error retrieving game state", 500}
-	}
-
 	aerr := ai_proposal(c, game)
 	if aerr != nil {
 		return aerr
 	}
 
-	err = db.StoreGameState(c, game)
-	if err != nil {
-		return &web.AppError{err, "Error storing game", 500}
-	}
-
 	return nil
 }
 
-func do_proposal(c appengine.Context, game data.Game, proposal data.Proposal) *web.AppError {
+func do_proposal(c appengine.Context, game data.Game, players []int) *web.AppError {
+	player_count := len(game.Roles)
+	proposal := data.Proposal{ Leader: game.State.Leader, Players: players, Votes: make([]bool, player_count), Voted: make([]bool, player_count) }
+
+	oldproposal, err := db.GetProposal(c, true, game, game.State.ThisMission, game.State.ThisProposal)
+	if err != nil {
+		return &web.AppError{err, "Error retrieving old proposal", 500}
+	} else if oldproposal != nil {
+		m := "Proposal has already been made"
+		return &web.AppError{errors.New(m), m, 400}
+	}
+
+	if game.State.ThisProposal == 4 {
+		// We represent the 5th proposal as having been unanimously approved
+		for i := range proposal.Votes {
+			proposal.Votes[i] = true
+			proposal.Votes[i] = true
+		}
+	}
+
 	db.StoreProposal(c, game, game.State.ThisMission, game.State.ThisProposal, proposal)
+
+	game.State.HaveProposal = true
+	err = db.StoreGameState(c, game)
+	if err != nil {
+		return &web.AppError{err, "Error storing game state", 500}
+	}
 
 	if game.State.ThisProposal == 4 {
 		// No vote on the 5th proposal - proceed directly to the mission
-		game.State.LastVoteMission = game.State.ThisMission
-		game.State.LastVoteProposal = -1
-
-		return start_mission(c, game, &proposal)
+		return start_mission(c, game, proposal)
 	}
 
-	return ai_votes(c, game)
+	return ai_votes(c, game, &proposal)
 }
 
-func check_votes(c appengine.Context, game data.Game, votes map[int]bool) *web.AppError {
-	//log.Printf("Votes so far: %+v", votes)
-	//log.Printf("Vote count %d, needed %d", len(votes), len(game.Players))
+func check_votes(c appengine.Context, game data.Game, proposal data.Proposal) *web.AppError {
+	//c.Debugf("Votes so far: %+v", votes)
+	//c.Debugf("Vote count %d, needed %d", len(votes), len(game.Roles))
 
-	if len(votes) == len(game.Roles) {
+	_, unvoted := count_bools(proposal.Voted)
+
+	if unvoted == 0 {
+		voteresult := data.VoteResult {
+			Index: game.State.ThisVote,
+			Mission: game.State.ThisMission,
+			Proposal: game.State.ThisProposal,
+			Leader: proposal.Leader,
+			Players: proposal.Players,
+			Votes: proposal.Votes,
+		}
+
+		err := db.StoreVoteResult(c, game, voteresult)
+		if err != nil {
+			return &web.AppError{err, "Error storing vote result", 500}
+		}
+
 		// Count the number of approve/reject votes
-		approves, rejects := count_bools(votes)
+		approves, rejects := count_bools(proposal.Votes)
 
-		//log.Printf("Votes: %+v", votes)
-		//log.Printf("%d approves, %d rejects", approves, rejects)
+		//c.Debugf("Votes: %+v", votes)
+		//c.Debugf("%d approves, %d rejects", approves, rejects)
 
-		game.State.LastVoteMission = game.State.ThisMission
-		game.State.LastVoteProposal = game.State.ThisProposal
+		game.State.ThisVote++
+		err = db.StoreGameState(c, game)
+		if err != nil {
+			return &web.AppError{err, "Error storing game", 500}
+		}
 
 		if approves > rejects {
 			// Start mission
-			aerr := start_mission(c, game, nil)
+			aerr := start_mission(c, game, proposal)
 			if aerr != nil {
 				return aerr
 			}
@@ -186,6 +215,11 @@ func check_votes(c appengine.Context, game data.Game, votes map[int]bool) *web.A
 			game.State.Leader++
 			if game.State.Leader >= len(game.Roles) {
 				game.State.Leader = 0
+			}
+
+			err := db.StoreGameState(c, game)
+			if err != nil {
+				return &web.AppError{err, "Error storing game", 500}
 			}
 
 			aerr := StartPicking(c, game)
@@ -198,25 +232,16 @@ func check_votes(c appengine.Context, game data.Game, votes map[int]bool) *web.A
 	return nil
 }
 
-func do_vote(c appengine.Context, game data.Game, i int, vote bool, pvotes *map[int]bool) *web.AppError {
-	var votes map[int]bool
-	if (pvotes == nil) {
-		var err error
-		votes, err = db.GetVotes(c, game, game.State.ThisMission, game.State.ThisProposal)
-		if err != nil {
-			return &web.AppError{err, "Error fetching votes", 500}
-		}
-	} else {
-		votes = *pvotes
-	}
+func do_vote(c appengine.Context, game data.Game, i int, vote bool, proposal *data.Proposal) *web.AppError {
+	proposal.Votes[i] = vote
+	proposal.Voted[i] = true
 
-	err := db.StoreVote(c, game, game.State.ThisMission, game.State.ThisProposal, i, vote)
+	err := db.StoreProposal(c, game, game.State.ThisMission, game.State.ThisProposal, *proposal)
 	if err != nil {
 		return &web.AppError{err, "Error storing mission", 500}
 	}
-	votes[i] = vote
 
-	aerr := check_votes(c, game, votes)
+	aerr := check_votes(c, game, *proposal)
 	if aerr != nil {
 		return aerr
 	}
@@ -224,7 +249,7 @@ func do_vote(c appengine.Context, game data.Game, i int, vote bool, pvotes *map[
 	return nil
 }
 
-func count_bools(values map[int]bool) (int, int) {
+func count_bools(values []bool) (int, int) {
 	trues := 0
 	falses := 0
 	for _, val := range values {
@@ -237,20 +262,42 @@ func count_bools(values map[int]bool) (int, int) {
 	return trues, falses
 }
 
-func check_actions(c appengine.Context, game data.Game, proposal data.Proposal, actions map[int]bool) *web.AppError {
-	if len(actions) == game.Setup.Missions[game.State.ThisMission].Size {
-		_, fails := count_bools(actions)
+func check_actions(c appengine.Context, game data.Game, proposal data.Proposal, actions data.Actions) *web.AppError {
+	//c.Debugf("Actions so far: %+v", actions)
+	//c.Debugf("Action count %d, needed %d", len(actions), game.Setup.Missions[game.State.ThisMission].Size)
 
-		result := data.MissionResult{Players: proposal.Players, Fails: fails, FailsAllowed: game.Setup.Missions[game.State.ThisMission].FailsAllowed}
-		err := db.StoreMissionResult(c, game, game.State.ThisMission, result)
-		if err != nil {
-			return &web.AppError{err, "Error storing mission result", 500}
-		}
+	_, unacted := count_bools(actions.Acted)
 
+	if unacted == 0 {
+		_, fails := count_bools(actions.Actions)
+
+		// It would seem like we could call this after
+		// StoreMissionResult - but this is misleading: we're in a
+		// transaction and we will not see the newly added
+		// MissionResult. So while we could call it there, placing it
+		// up here makes it more clear what we're doing and also
+		// avoids making the extra datastore read that will always
+		// return nil
 		results, err := db.GetMissionResults(c, game)
 		if err != nil {
 			return &web.AppError{err, "Error retrieving mission results", 500}
 		}
+
+		result := data.MissionResult{
+			Mission: game.State.ThisMission,
+			Proposal: game.State.ThisProposal,
+			Leader: game.State.Leader,
+			Players: proposal.Players,
+			Fails: fails,
+			FailsAllowed: game.Setup.Missions[game.State.ThisMission].FailsAllowed,
+		}
+		err = db.StoreMissionResult(c, game, game.State.ThisMission, result)
+		if err != nil {
+			return &web.AppError{err, "Error storing mission result", 500}
+		}
+
+		game.State.MissionsComplete[result.Mission] = true
+		results = append(results, &result)
 
 		game.State.GoodScore, game.State.EvilScore = count_score(results)
 		game.State.GameOver = (game.State.GoodScore >= 3) || (game.State.EvilScore >= 3)
@@ -274,6 +321,14 @@ func check_actions(c appengine.Context, game data.Game, proposal data.Proposal, 
 			panic("Mission has gone past 5!")
 		}
 
+		game.State.HaveProposal = false
+		game.State.HaveActions = false
+
+		err = db.StoreGameState(c, game)
+		if err != nil {
+			return &web.AppError{err, "Error storing game", 500}
+		}
+
 		aerr := StartPicking(c, game)
 		if aerr != nil {
 			return aerr
@@ -283,20 +338,24 @@ func check_actions(c appengine.Context, game data.Game, proposal data.Proposal, 
 	return nil
 }
 
-func do_action(c appengine.Context, game data.Game, i int, action bool, proposal data.Proposal, pactions *map[int]bool) *web.AppError {
-	var actions map[int]bool
-	if (pactions == nil) {
-		actions, _ = db.GetActions(c, game, game.State.ThisMission)
-	} else {
-		actions = *pactions
+func do_action(c appengine.Context, game data.Game, mypos int, action bool, proposal data.Proposal, actions *data.Actions) *web.AppError {
+	mpos, ok := proposal.LookupMissionSlot(mypos)
+	if !ok {
+		m := "Position is not on this mission"
+		return &web.AppError{errors.New(m), m, 500}
 	}
 
-	db.StoreAction(c, game, game.State.ThisMission, i, action)
-	actions[i] = action
+	actions.Actions[mpos] = action
+	actions.Acted[mpos] = true
+
+	err := db.StoreActions(c, game, game.State.ThisMission, *actions)
+	if err != nil {
+		return &web.AppError{err, "Error storing action", 500}
+	}
 
 	//log.Printf("Actions so far: %+v", actions)
 
-	aerr := check_actions(c, game, proposal, actions)
+	aerr := check_actions(c, game, proposal, *actions)
 	if aerr != nil {
 		return aerr
 	}
@@ -305,15 +364,12 @@ func do_action(c appengine.Context, game data.Game, i int, action bool, proposal
 }
 
 type ProposeData struct {
+	Mission int `json:"mission"`
+	Proposal int `json:"proposal"`
 	Players []int `json:"players"`
 }
 
-func ReqGamePropose(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
-	err := db.EnsureGameState(c, &game)
-	if err != nil {
-		return &web.AppError{err, "Error retrieving game state", 500}
-	}
-
+func ValidateGamePropose(game data.Game, proposedata ProposeData, mypos int) *web.AppError {
 	if game.State.GameOver {
 		m := "This game is over"
 		return &web.AppError{errors.New(m), m, 400}
@@ -324,18 +380,9 @@ func ReqGamePropose(w http.ResponseWriter, r *http.Request, c appengine.Context,
 		return &web.AppError{errors.New(m), m, 400}
 	}
 
-	oldproposal, err := db.GetProposal(c, game, game.State.ThisMission, game.State.ThisProposal)
-	if err != nil {
-		return &web.AppError{err, "Error retrieving proposal", 500}
-	} else if oldproposal != nil {
-		m := "Proposal has already been made"
+	if proposedata.Mission != game.State.ThisMission || proposedata.Proposal != game.State.ThisProposal {
+		m := "Proposal is not current"
 		return &web.AppError{errors.New(m), m, 400}
-	}
-
-	var proposedata ProposeData
-	err = json.NewDecoder(r.Body).Decode(&proposedata)
-	if err != nil {
-		return &web.AppError{err, "Error storing parsing json body", 500}
 	}
 
 	if len(proposedata.Players) != game.Setup.Missions[game.State.ThisMission].Size {
@@ -350,16 +397,33 @@ func ReqGamePropose(w http.ResponseWriter, r *http.Request, c appengine.Context,
 		}
 	}
 
-	proposal := data.Proposal{ Leader: game.State.Leader, Players: proposedata.Players }
+	return nil
+}
 
-	var aerr *web.AppError
-	err = datastore.RunInTransaction(c, func(tc appengine.Context) error {
-		aerr = do_proposal(tc, game, proposal)
-		return nil
-	}, nil)
+func ReqGamePropose(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
+	err := db.EnsureGameState(c, &game, true)
 	if err != nil {
-		return &web.AppError{err, "Error applying proposal (transaction failed?)", 500}
+		return &web.AppError{err, "Error retrieving game state", 500}
 	}
+
+	var proposedata ProposeData
+	err = json.NewDecoder(r.Body).Decode(&proposedata)
+	if err != nil {
+		return &web.AppError{err, "Error parsing json body", 500}
+	}
+
+	// These are 1-based in the ajax API
+	proposedata.Mission--
+	proposedata.Proposal--
+
+	aerr := ValidateGamePropose(game, proposedata, mypos)
+	if aerr != nil {
+		return aerr
+	}
+
+	aerr = trans.RunGameTransaction(c, &game, func(tc appengine.Context, game data.Game) *web.AppError {
+		return do_proposal(tc, game, proposedata.Players)
+	})
 	if aerr != nil {
 		return aerr
 	}
@@ -368,15 +432,12 @@ func ReqGamePropose(w http.ResponseWriter, r *http.Request, c appengine.Context,
 }
 
 type VoteData struct {
+	Mission int `json:"mission"`
+	Proposal int `json:"proposal"`
 	Vote string `json:"vote"`
 }
 
-func ReqGameVote(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
-	err := db.EnsureGameState(c, &game)
-	if err != nil {
-		return &web.AppError{err, "Error retrieving game state", 500}
-	}
-
+func ValidateGameVote(game data.Game, votedata VoteData) *web.AppError {
 	if game.State.GameOver {
 		m := "This game is over"
 		return &web.AppError{errors.New(m), m, 400}
@@ -387,37 +448,54 @@ func ReqGameVote(w http.ResponseWriter, r *http.Request, c appengine.Context, se
 		return &web.AppError{errors.New(m), m, 400}
 	}
 
-	votes, err := db.GetVotes(c, game, game.State.ThisMission, game.State.ThisProposal)
-	if err != nil {
-		return &web.AppError{err, "Error fetching votes", 500}
+	if votedata.Mission != game.State.ThisMission || votedata.Proposal != game.State.ThisProposal {
+		m := "Vote is not for the current proposal"
+		return &web.AppError{errors.New(m), m, 400}
 	}
 
-	_, ok := votes[mypos]
-	if ok {
-		m := "You have already voted"
+	if votedata.Vote != "approve" && votedata.Vote != "reject" {
+		m := "Invalid vote"
 		return &web.AppError{errors.New(m), m, 400}
+	}
+
+	return nil
+}
+
+func ReqGameVote(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
+	err := db.EnsureGameState(c, &game, true)
+	if err != nil {
+		return &web.AppError{err, "Error retrieving game state", 500}
 	}
 
 	var votedata VoteData
 	err = json.NewDecoder(r.Body).Decode(&votedata)
 	if err != nil {
-		return &web.AppError{err, "Error storing parsing json body", 500}
-}
+		return &web.AppError{err, "Error parsing json body", 500}
+	}
 
-	if votedata.Vote != "approve" && votedata.Vote != "reject" {
-		return &web.AppError{err, "Invalid vote", 400}
+	// These are 1-based in the ajax API
+	votedata.Mission--
+	votedata.Proposal--
+
+	aerr := ValidateGameVote(game, votedata)
+	if aerr != nil {
+		return aerr
 	}
 
 	vote := votedata.Vote == "approve"
 
-	var aerr *web.AppError
-	err = datastore.RunInTransaction(c, func(tc appengine.Context) error {
-		aerr = do_vote(c, game, mypos, vote, &votes)
-		return nil
-	}, nil)
-	if err != nil {
-		return &web.AppError{err, "Error applying proposal (transaction failed?)", 500}
-	}
+	aerr = trans.RunGameTransaction(c, &game, func(tc appengine.Context, game data.Game) *web.AppError {
+		proposal, err := db.GetProposal(c, true, game, game.State.ThisMission, game.State.ThisProposal)
+		if err != nil {
+			return &web.AppError{err, "Error fetching proposal", 500}
+		}
+		if proposal == nil {
+			m := "Proposal not found"
+			return &web.AppError{errors.New(m), m, 500}
+		}
+
+		return do_vote(tc, game, mypos, vote, proposal)
+	})
 	if aerr != nil {
 		return aerr
 	}
@@ -426,32 +504,27 @@ func ReqGameVote(w http.ResponseWriter, r *http.Request, c appengine.Context, se
 }
 
 type ActionData struct {
+	Mission int `json:"mission"`
+	Proposal int `json:"proposal"`
 	Action string `json:"action"`
 }
 
-func ReqGameMission(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
-	err := db.EnsureGameState(c, &game)
-	if err != nil {
-		return &web.AppError{err, "Error retrieving game state", 500}
-	}
-
+func ValidateGameMission(game data.Game, actiondata ActionData, mypos int, proposal *data.Proposal) *web.AppError {
 	if game.State.GameOver {
 		m := "This game is over"
 		return &web.AppError{errors.New(m), m, 400}
 	}
 
-	mission, err := db.GetMission(c, game, game.State.ThisMission)
-	if err != nil {
-		return &web.AppError{err, "Error retrieving mission", 500}
-	}
-	if mission == nil {
+	if proposal == nil {
 		m := "No mission is in progress"
 		return &web.AppError{errors.New(m), m, 400}
 	}
 
-	proposal, err := db.GetProposal(c, game, game.State.ThisMission, *mission)
-	if err != nil {
-		return &web.AppError{err, "Error retrieving proposal", 500}
+	_, unvoted := count_bools(proposal.Voted)
+	approved, rejected := count_bools(proposal.Votes)
+	if unvoted != 0 || approved < rejected {
+		m := "This proposal has not been approved"
+		return &web.AppError{errors.New(m), m, 400}
 	}
 
 	found := false
@@ -465,21 +538,9 @@ func ReqGameMission(w http.ResponseWriter, r *http.Request, c appengine.Context,
 		return &web.AppError{errors.New(m), m, 400}
 	}
 
-	actions, err := db.GetActions(c, game, game.State.ThisMission)
-	if err != nil {
-		return &web.AppError{err, "Error fetching actions", 500}
-	}
-
-	_, ok := actions[mypos]
-	if ok {
-		m := "You have already chosen your action"
+	if actiondata.Mission != game.State.ThisMission || actiondata.Proposal != game.State.ThisProposal {
+		m := "Action is not for the current proposal"
 		return &web.AppError{errors.New(m), m, 400}
-	}
-
-	var actiondata ActionData
-	err = json.NewDecoder(r.Body).Decode(&actiondata)
-	if err != nil {
-		return &web.AppError{err, "Error storing parsing json body", 500}
 	}
 
 	if actiondata.Action != "success" && actiondata.Action != "fail" {
@@ -488,7 +549,6 @@ func ReqGameMission(w http.ResponseWriter, r *http.Request, c appengine.Context,
 	}
 
 	action := actiondata.Action == "success"
-
 	myrole := game.Roles[mypos]
 	mycard := game.Setup.Cards[myrole]
 
@@ -497,14 +557,53 @@ func ReqGameMission(w http.ResponseWriter, r *http.Request, c appengine.Context,
 		return &web.AppError{errors.New(m), m, 400}
 	}
 
-	var aerr *web.AppError
-	err = datastore.RunInTransaction(c, func(tc appengine.Context) error {
-		aerr = do_action(c, game, mypos, action, *proposal, &actions)
-		return nil
-	}, nil)
+	return nil
+}
+
+func ReqGameMission(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
+	err := db.EnsureGameState(c, &game, true)
 	if err != nil {
-		return &web.AppError{err, "Error applying proposal (transaction failed?)", 500}
+		return &web.AppError{err, "Error retrieving game state", 500}
 	}
+
+	actions, err := db.GetActions(c, true, game, game.State.ThisMission)
+	if err != nil {
+		return &web.AppError{err, "Error retrieving actions", 500}
+	}
+
+	var proposal *data.Proposal
+	if actions != nil {
+		proposal, err = db.GetProposal(c, true, game, game.State.ThisMission, actions.Proposal)
+		if err != nil {
+			return &web.AppError{err, "Error retrieving proposal", 500}
+		}
+	}
+
+	var actiondata ActionData
+	err = json.NewDecoder(r.Body).Decode(&actiondata)
+	if err != nil {
+		return &web.AppError{err, "Error parsing json body", 500}
+	}
+
+	// These are 1-based in the ajax API
+	actiondata.Mission--
+	actiondata.Proposal--
+
+	aerr := ValidateGameMission(game, actiondata, mypos, proposal)
+
+	action := actiondata.Action == "success"
+
+	aerr = trans.RunGameTransaction(c, &game, func(tc appengine.Context, game data.Game) *web.AppError {
+		actions, err := db.GetActions(c, true, game, game.State.ThisMission)
+		if err != nil {
+			return &web.AppError{err, "Error retrieving actions", 500}
+		}
+		if actions == nil {
+			return &web.AppError{err, "Actions object not found for current mission", 500}
+		}
+
+		return do_action(tc, game, mypos, action, *proposal, actions)
+	})
 	if aerr != nil {
 		return aerr
 	}
@@ -513,32 +612,30 @@ func ReqGameMission(w http.ResponseWriter, r *http.Request, c appengine.Context,
 }
 
 func ReqGamePoke(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
-	err := db.EnsureGameState(c, &game)
-	if err != nil {
-		return &web.AppError{err, "Error retrieving game state", 500}
-	}
+	aerr := trans.RunGameTransaction(c, &game, func(tc appengine.Context, game data.Game) *web.AppError {
+		proposal, err := db.GetProposal(tc, true, game, game.State.ThisMission, game.State.ThisProposal)
+		if err != nil {
+			return &web.AppError{err, "Error retrieving proposal", 500}
+		}
 
-	votes, err := db.GetVotes(c, game, game.State.ThisMission, game.State.ThisProposal)
-	if err != nil {
-		return &web.AppError{err, "Error fetching votes", 500}
-	}
+		actions, err := db.GetActions(tc, true, game, game.State.ThisMission)
+		if err != nil {
+			return &web.AppError{err, "Error fetching actions", 500}
+		}
 
-	proposal, err := db.GetProposal(c, game, game.State.ThisMission, game.State.ThisProposal)
-	if err != nil {
-		return &web.AppError{err, "Error retrieving proposal", 500}
-	}
+		aerr := check_votes(tc, game, *proposal)
+		if aerr != nil {
+			return aerr
+		}
 
-	actions, err := db.GetActions(c, game, game.State.ThisMission)
-	if err != nil {
-		return &web.AppError{err, "Error fetching actions", 500}
-	}
+		aerr = check_actions(tc, game, *proposal, *actions)
+		if aerr != nil {
+			return aerr
+		}
 
-	aerr := check_votes(c, game, votes)
-	if aerr != nil {
-		return aerr
-	}
+		return nil
+	})
 
-	aerr = check_actions(c, game, *proposal, actions)
 	if aerr != nil {
 		return aerr
 	}

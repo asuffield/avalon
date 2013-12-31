@@ -6,7 +6,6 @@ import (
 	"avalon/data"
 	"avalon/web"
 	"encoding/json"
-	"errors"
 	"github.com/gorilla/sessions"
 	"net/http"
 	"net/url"
@@ -55,7 +54,7 @@ func make_ReqAppJS(w http.ResponseWriter, r *http.Request, session *sessions.Ses
 		log.Println("error saving session:", err)
 	}
 
-	stateURL := url.QueryEscape(session.Values["state"].(string))
+	stateURL := session.Values["state"].(string)
 
 	// Fill in the missing fields in index.html
 	var data = struct {
@@ -72,11 +71,11 @@ func make_ReqAppJS(w http.ResponseWriter, r *http.Request, session *sessions.Ses
 	return nil
 }
 
-func ReqAppJS(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+func ReqAppJS(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session) *web.AppError {
 	return make_ReqAppJS(w, r, session, avalonClientID, avalonServerPath)
 }
 
-func ReqAppDevJS(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+func ReqAppDevJS(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session) *web.AppError {
 	return make_ReqAppJS(w, r, session, avalonDevClientID, avalonDevServerPath)
 }
 
@@ -101,22 +100,13 @@ func fetch_token_info(c appengine.Context, token string) (*TokenInfo, *web.AppEr
 	return &tokeninfo, nil
 }
 
-func ReqAuthToken(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
-	state := session.Values["state"].(string)
-
-	if r.FormValue("state") != state {
-		m := "Invalid state parameter"
-		return &web.AppError{errors.New(m), m, 403}
-	}
-	delete(session.Values, "state")
-
+func ReqAuthToken(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session) *web.AppError {
 	var authdata AuthData
 	err := json.NewDecoder(r.Body).Decode(&authdata)
 	if err != nil {
 		return &web.AppError{err, "Error storing parsing json body", 500}
 	}
 
-	c := appengine.NewContext(r)
 	tokeninfo, aerr := fetch_token_info(c, authdata.Token)
 	if aerr != nil {
 		return aerr
@@ -131,6 +121,12 @@ func ReqAuthToken(w http.ResponseWriter, r *http.Request, session *sessions.Sess
 	err = session.Save(r, w)
 	if err != nil {
 		log.Println("error saving session:", err)
+	}
+
+	w.Header().Set("Content-type", "application/json")
+	err = json.NewEncoder(w).Encode(&struct{}{})
+	if err != nil {
+		return &web.AppError{err, "Error encoding json", 500}
 	}
 
 	return nil

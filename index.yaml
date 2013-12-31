@@ -13,6 +13,5 @@ indexes:
 - kind: Game
   ancestor: yes
   properties:
-  - name: GameOver
   - name: StartTime
     direction: desc

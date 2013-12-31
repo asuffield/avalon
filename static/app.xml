@@ -57,7 +57,7 @@
 
         <div class='gameinfobox'>
            <div class='gameinfo'>Players:
-              <ul class='players gameplayers'></ul>
+              <div class='players gameplayers'></div>
            </div>
         </div>
     </div>
@@ -67,8 +67,8 @@
             <div class='gameinfo'>Number of players on this mission: <span class='playercount'/></div>
         </div>
         <form class='proposal' id='proposal'>
-            Pick the mission to propose:
-            <ul class='proposal'></ul>
+            Pick the mission to propose
+            <div class='proposal'></div>
             <button>Propose</button>
         </form>
     </div>
@@ -76,7 +76,7 @@
     <div class='main-box voting-mode'>
         <div class='gameinfobox'>
             <div class='gameinfo'>Proposed mission:
-              <ul class='players missionplayers'></ul>
+              <div class='players missionplayers'></div>
             </div>
         </div>
         <form class='vote' id='vote'>
@@ -90,7 +90,7 @@
     <div class='main-box mission-mode'>
         <div class='gameinfobox'>
             <div class='gameinfo'>Mission:
-              <ul class='players missionplayers'></ul>
+              <div class='players missionplayers'></div>
             </div>
         </div>
         <form class='mission' id='mission'>
@@ -103,35 +103,42 @@
 
     <div class='main-box gameover-mode'>
         <div class='gameinfobox'>
+            <div class='gameinfo'><span class='comment'/></div>
             <div class='gameinfo'>Result: <span class='result'/></div>
             <div class='gameinfo'>Cards:
-              <ul class='players playercards'></ul>
+              <div class='players playercards'></div>
             </div>
         </div>
         <div class='restartbox'>
            <button class='start-game'>Start a new game</button>
            <div class='gameinfobox'>
               <div class='gameinfo'>Players:
-                 <ul class='players gameplayers'></ul>
+                 <div class='players gameplayers'></div>
               </div>
            </div>
         </div>
     </div>
 
     <div class='info-box table-order'>
-        Table order:
-        <ol class='players'></ol>
+        Table order
+        <div class='players'></div>
+    </div>
+
+    <div class='info-box last-proposal'>
+        Last proposal
+        <div class='players'></div>
     </div>
 
     <div class='info-box mission-results'>
-        Missions:
-        <ol class='missions'></ol>
+        Missions
+        <div class='mission-status'/>
     </div>
 
     <div class='debug'>
         Debug buttons
         <button id='start'>Start refresh</button>
         <button id='stop'>Stop refresh</button>
+        <button id='refresh'>Refresh once</button>
     </div>
 </div>
 

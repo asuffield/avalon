@@ -9,17 +9,47 @@
 .main-box {
     display: none;
     margin-top: 20px;
+    margin-left: 10px;
+    margin-right: 10px;
+    padding: 10px;
+    border: 1px solid rgb(127,127,127);
 }
 
 .info-box {
     display: none;
     margin-top: 20px;
+    margin-left: 10px;
+    margin-right: 10px;
+    padding: 10px;
+    border: 1px solid rgb(127,127,127);
+}
+
+.loading-mode {
+    border: 0px;
+}
+
+.players {
+    margin-left: 20px;
+    line-height: 1.3em;
+    text-align: left;
+}
+
+.table-order {
+    text-align: center;
+}
+
+.last-proposal {
+    text-align: center;
 }
 
 form.proposal {
-    margin: 5px;
-    border: 1px solid black;
-    padding: 5px;
+    text-align: center;
+}
+
+div.proposal {
+    text-align: left;
+    margin-top: 5px;
+    margin-left: 20px;
 }
 
 .debug {
@@ -30,4 +60,56 @@ form.proposal {
     margin: 5px;
     border: 1px solid black;
     padding: 5px;
+}
+
+.player-icon {
+    display: inline-block;
+    width: 16px;
+}
+
+.gameover-mode .comment {
+    font-weight: bold;
+}
+
+.mission-results {
+    text-align: center;
+    border: 0px;
+}
+
+.mission-results .mission-status {
+    margin-left: 30px;
+    margin-right: 30px;
+    margin-top: 10px;
+    font-size: 20px;
+    font-weight: bold;
+    text-align: justify;
+    height: 1.5em;
+    line-height: 1.5em;
+}
+
+.mission-results .mission-status .mission {
+    border-radius: 50%;
+    color: rgb(110, 110, 110);
+    display: inline-block;
+    text-align: center;
+    width: 1.5em;
+}
+
+.mission-results .mission-status .mission.success {
+    background-color: rgb(0, 0, 255);
+    color: rgb(210, 210, 210);
+}
+
+.mission-results .mission-status .mission.failed {
+    background-color: rgb(255, 0, 0);
+    color: rgb(210, 210, 210);
+}
+
+.mission-results .mission-status .mission.current {
+    border: 1px solid black;
+}
+
+.mission-results .mission-status .stretch {
+    width: 100%;
+    display: inline-block;
 }

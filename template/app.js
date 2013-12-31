@@ -15,6 +15,12 @@
         $('div.pick-mode form.proposal button').click(this.commitProposal.bind(this));
         $('div.voting-mode form.vote button').click(this.commitVote.bind(this));
         $('div.mission-mode form.mission button').click(this.commitMission.bind(this));
+
+        var that = this;
+        $(document).keypress(function (e) {if (e.which == 172) {$('div.debug').show();}});
+        $('div.debug button#start').click(function() { that.startInterval() });
+        $('div.debug button#stop').click(function() { that.stopInterval() });
+        $('div.debug button#refresh').click(function() { that.fetchGameState() });
     }
 
     App.prototype.apiready = false;
@@ -56,10 +62,6 @@
             });
 
             this.interval = null;
-
-            var that = this;
-            $('div.debug button#start').click(function() { that.startInterval() });
-            $('div.debug button#stop').click(function() { that.stopInterval() });
         }
     };
 
@@ -76,26 +78,32 @@
         }
     };
 
+    App.prototype.api = function(call, args) {
+        return $.ajax({
+            type: 'POST',
+            url: serverPath + call,
+            headers: { 'x-csrf-token': '{{ .State }}' },
+            contentType: 'application/json; charset=utf-8',
+            data: JSON.stringify(args),
+            dataType: 'json',
+            xhrFields: {
+                withCredentials: true
+            },
+        });
+    };
+
     App.prototype.authDone = function(authResult) {
         if (this.auth_got) {
             return;
         }
         this.auth_got = true;
 
-        $.ajax({
-            type: 'POST',
-            url: serverPath + 'auth/token?state={{ .State }}',
-            xhrFields: {
-                withCredentials: true
-            },
-            success: this.gameReady.bind(this),
-            processData: false,
-            contentType: 'application/json; charset=utf-8',
-            data: JSON.stringify({token: gapi.auth.getToken().access_token,
-                                  myid: gapi.hangout.getLocalParticipantId(),
-                                  hangout: gapi.hangout.getHangoutId(),
-                                 }),
-        });
+        this.api('auth/token',
+                 {token: gapi.auth.getToken().access_token,
+                  myid: gapi.hangout.getLocalParticipantId(),
+                  hangout: gapi.hangout.getHangoutId(),
+                 })
+            .done(this.gameReady.bind(this));
     };
 
     App.prototype.gameReady = function(result) {
@@ -118,7 +126,7 @@
 
         var foundme = false;
         for (var i = 0; i < participants.length; i++) {
-            var $player = $("<li/>");
+            var $player = $("<div/>");
             var text = participants[i].person.displayName;
             if (participants[i].id == this.myid) {
                 text += " (me)";
@@ -150,28 +158,14 @@
 
         var that = this;
 
-        $.ajax({
-            type: 'POST',
-            url: serverPath + 'game/start',
-            contentType: 'application/json; charset=utf-8',
-            data: JSON.stringify({ players: this.participant_ids }),
-            dataType: 'json',
-            xhrFields: {
-                withCredentials: true
-            },
-        }).done(this.handleGameState.bind(this))
+        this.api('game/start',
+                 { players: this.participant_ids }
+                ).done(this.handleGameState.bind(this))
             .fail(function() {that.ui.$start_button.prop('disabled', false)});
     };
 
     App.prototype.joinGame = function(gameid) {
-        $.ajax({
-            type: 'POST',
-            url: serverPath + 'game/join',
-            dataType: 'json',
-            xhrFields: {
-                withCredentials: true
-            },
-        }).done(this.handleGameState.bind(this));
+        this.api('game/join', {}).done(this.handleGameState.bind(this));
     };
 
     App.prototype.gameStart = function(gameid) {
@@ -180,10 +174,7 @@
         this.this_proposal = null;
         this.leader = null;
         this.gameid = gameid;
-
-        if ("$missionresults" in this.ui) {
-            this.ui.$missionresults.empty();
-        }
+        this.renderedmissions = 0;
 
         this.revealRoles();
         $('.info-box').show();
@@ -192,7 +183,7 @@
 
     App.prototype.startMode = function() {
         this.ui.$start_button = $('button.start-game');
-        this.ui.$gameplayers = $('div.start-mode ul.gameplayers');
+        this.ui.$gameplayers = $('div.start-mode div.gameplayers');
         this.showGamePlayers();
 
         $('div.start-mode').show();
@@ -208,7 +199,7 @@
         this.ui.$count = $('div.pick-mode span.playercount');
 
         this.ui.$pickbox = $('div.pick-mode form.proposal');
-        this.ui.$pick = this.ui.$pickbox.children('ul.proposal');
+        this.ui.$pick = this.ui.$pickbox.children('div.proposal');
         this.ui.$commitproposal = this.ui.$pickbox.children('button');
 
         this.resetMode = this.resetPickMode;
@@ -227,7 +218,7 @@
     };
 
     App.prototype.votingMode = function() {
-        this.ui.$missionplayers = $('div.voting-mode ul.missionplayers');
+        this.ui.$missionplayers = $('div.voting-mode div.missionplayers');
 
         this.ui.$pickbox = $('div.voting-mode form.vote');
         this.ui.$approve = this.ui.$pickbox.children('input.approve');
@@ -251,7 +242,7 @@
     };
 
     App.prototype.missionMode = function() {
-        this.ui.$missionplayers = $('div.mission-mode ul.missionplayers');
+        this.ui.$missionplayers = $('div.mission-mode div.missionplayers');
 
         this.ui.$pickbox = $('div.mission-mode form.mission');
         this.ui.$success = this.ui.$pickbox.children('input.success');
@@ -265,15 +256,18 @@
     };
 
     App.prototype.resetGameoverMode = function() {
+        this.ui.$result.text('');
+        this.ui.$comment.text('');
         this.ui.$playercards.empty();
         $('button.start-game').prop('disabled', false);
     };
 
     App.prototype.gameoverMode = function() {
         this.ui.$result = $('div.gameover-mode span.result');
-        this.ui.$playercards = $('div.gameover-mode ul.playercards');
+        this.ui.$comment = $('div.gameover-mode span.comment');
+        this.ui.$playercards = $('div.gameover-mode div.playercards');
         this.ui.$start_button = $('button.start-game');
-        this.ui.$gameplayers = $('div.gameover-mode ul.gameplayers');
+        this.ui.$gameplayers = $('div.gameover-mode div.gameplayers');
 
         this.resetMode = this.resetGameoverMode;
         this.resetMode();
@@ -304,11 +298,13 @@
             this.gameoverMode();
         }
 
-        this.ui.$tableplayers = $('div.table-order ol.players');
+        this.ui.$tableplayers = $('div.table-order div.players');
+        this.ui.$lastproposal = $('div.last-proposal');
+        this.ui.$lastproposalplayers = $('div.last-proposal div.players');
         this.ui.$leader = $('div.game-status span.leader');
         this.ui.$thismission = $('div.game-status span.thismission');
         this.ui.$thisproposal = $('div.game-status span.thisproposal');
-        this.ui.$missionresults = $('div.mission-results ol.missions');
+        this.ui.$missionstatus = $('div.mission-results div.mission-status');
     }
 
     App.prototype.commitProposal = function() {
@@ -333,16 +329,12 @@
         this.ui.$commitproposal.prop('disabled', true);
         this.ui.$pick.children('input').prop('disabled', true);
 
-        $.ajax({
-            type: 'POST',
-            url: serverPath + 'game/propose',
-            contentType: 'application/json; charset=utf-8',
-            data: JSON.stringify({ players: players }),
-            dataType: 'json',
-            xhrFields: {
-                withCredentials: true
-            },
-        }).done(this.handleGameState.bind(this))
+        this.api('game/propose',
+                 { mission: this.this_mission,
+                   proposal: this.this_proposal,
+                   players: players
+                 }
+                ).done(this.handleGameState.bind(this))
             .fail(function() {
                 that.ui.$commitproposal.prop('disabled', false)
                 that.ui.$pick.children('input').prop('disabled', false);
@@ -368,16 +360,12 @@
         var vote = $selected.val();
         var that = this;
 
-        $.ajax({
-            type: 'POST',
-            url: serverPath + 'game/vote',
-            contentType: 'application/json; charset=utf-8',
-            data: JSON.stringify({ vote: vote }),
-            dataType: 'json',
-            xhrFields: {
-                withCredentials: true
-            },
-        }).done(this.handleGameState.bind(this))
+        this.api('game/vote',
+                 { mission: this.this_mission,
+                   proposal: this.this_proposal,
+                   vote: vote
+                 }
+                ).done(this.handleGameState.bind(this))
             .fail(function() {
                 that.ui.$commitvote.prop('disabled', false)
                 that.ui.$approve.prop('disabled', false);
@@ -403,16 +391,11 @@
 
         var that = this;
 
-        $.ajax({
-            type: 'POST',
-            url: serverPath + 'game/mission',
-            contentType: 'application/json; charset=utf-8',
-            data: JSON.stringify({ action: $selected.val() }),
-            dataType: 'json',
-            xhrFields: {
-                withCredentials: true
-            },
-        }).done(this.handleGameState.bind(this))
+        this.api('game/mission',
+                 { mission: this.this_mission,
+                   action: $selected.val()
+                 }
+                ).done(this.handleGameState.bind(this))
             .fail(function() {
                 that.ui.$commitmission.prop('disabled', false)
                 that.ui.$success.prop('disabled', false)
@@ -424,14 +407,14 @@
     App.prototype.becomeLeader = function() {
         for (var i = 0; i < this.players.length; i++) {
             var id = this.players[i];
-            var $li = $("<li/>");
+            var $box = $("<div/>");
             var $label = $("<label/>");
             var $input = $("<input type='checkbox'/>");
             $input.attr('value', i);
-            $li.append($label);
+            $box.append($label);
             $label.text(this.playerName(i))
             $label.prepend($input);
-            this.ui.$pick.append($li);
+            this.ui.$pick.append($box);
         }
 
         this.ui.$pickbox.show();
@@ -453,14 +436,7 @@
     };
 
     App.prototype.revealRoles = function() {
-        $.ajax({
-            type: 'POST',
-            url: serverPath + 'game/reveal',
-            dataType: 'json',
-            xhrFields: {
-                withCredentials: true
-            },
-        }).done(this.handleReveal.bind(this));
+        this.api('game/reveal', {}).done(this.handleReveal.bind(this));
     };
 
     App.prototype.handleReveal = function(msg) {
@@ -470,8 +446,8 @@
         for (var i = 0; i < msg.length; i++) {
             var $box = $("<div class='reveal'/>");
             $box.text(msg[i].label);
-            var $list = $("<ul class='players'/>");
-            this.renderPlayers(msg[i].players, {}, $list);
+            var $list = $("<div class='players'/>");
+            this.renderPlayers(msg[i].players, {}, {}, $list);
             $box.append($list);
             this.$msgbox.append($box);
         }
@@ -483,14 +459,7 @@
         if (this.fetchajax !== null) {
             this.fetchajax.abort();
         }
-        this.fetchajax = $.ajax({
-            type: 'POST',
-            url: serverPath + 'game/state',
-            dataType: 'json',
-            xhrFields: {
-                withCredentials: true
-            },
-        }).done(this.handleGameState.bind(this));
+        this.fetchajax = this.api('game/state', {}).done(this.handleGameState.bind(this));
     };
 
     var ai_re = /^ai_(\d+)$/;
@@ -524,20 +493,28 @@
         return this.playerNameById(this.players[pos]);
     };
 
-    App.prototype.renderPlayers = function (players, data, $list) {
+    App.prototype.renderPlayers = function (players, data, icons, $list) {
         $list.empty();
 
         var includesme = false;
 
         for (var i = 0; i < players.length; i++) {
-            var $player = $("<li/>");
+            var $player = $("<div/>");
+            var $iconbox = $("<div class='player-icon'/>");
             var text = this.playerName(players[i]);
             if (i in data) {
                 text += ': ' + data[i];
             }
             $player.text(text);
+            $player.prepend($iconbox);
+            if (players[i] in icons) {
+                var $icon = $("<span class='player-icon ui-icon'></span>");
+                $icon.addClass(icons[players[i]]);
+                $iconbox.append($icon);
+                //text = ' ' + text;
+            }
             $list.append($player);
-            if (players[i] == this.myid) {
+            if (players[i] == this.mypos) {
                 includesme = true;
             }
         }
@@ -545,25 +522,44 @@
         return includesme;
     };
 
-    App.prototype.renderMissions = function (results) {
-        for (var i = this.ui.$missionresults.children().length; i < results.length; i++) {
-            var $li = $("<li/>");
-            var text;
+    App.prototype.renderMissions = function (setup, results) {
+        if (this.renderedmissions == results.length) {
+            return;
+        }
+
+        this.ui.$missionstatus.empty();
+        var missions = [];
+        for (var i = 0; i < setup.missions.length; i++) {
+            var $missionbox = $("<div class='mission'/>");
+            text = setup.missions[i].size;
+            if (setup.missions[i].fails_allowed > 0) {
+                text += "*";
+            }
+            $missionbox.text(text);
+            missions.push($missionbox);
+            this.ui.$missionstatus.append($missionbox);
+            // This is vital to word-splitting for the css justification magic
+            this.ui.$missionstatus.append(' ');
+        }
+        this.ui.$missionstatus.append($("<span class='stretch'/>"));
+        for (var i = 0; i < results.length; i++) {
+            var $mission = missions[results[i].mission];
             if (results[i].fails > results[i].fails_allowed) {
-                text = "Failed"
+                $mission.addClass('failed');
             }
             else {
-                text = "Success"
+                $mission.addClass('success');
             }
+            var players = results[i].players.map(this.playerName.bind(this));
+            var text = players.join(", ") + ", Leader: " + this.playerName(results[i].leader);
             if (results[i].fails > 0) {
                 text += " (" + results[i].fails + " fails)"
             }
-            $li.text(text);
-            var players = results[i].players.map(this.playerName.bind(this));
-            $li.attr('title', players.join(", "));
-            $li.tooltip();
-            this.ui.$missionresults.append($li);
+            $mission.attr('title', text);
+            $mission.tooltip();
         }
+        missions[this.this_mission - 1].addClass('current');
+        this.renderedmissions = results.length;
     };
 
     App.prototype.handleGameState = function (msg) {
@@ -571,12 +567,14 @@
         this.fetchajax = null;
         this.players = msg.general.players;
         this.mypos = this.players.indexOf(this.myid);
+        this.results = msg.general.results;
+        this.votes = msg.general.votes;
 
         if (this.gameid != msg.general.gameid) {
             console.log("/state said we need to change games");
             this.gameStart(msg.general.gameid);
-            gapi.hangout.data.submitDelta({gameid: msg.general.gameid});
         }
+        gapi.hangout.data.submitDelta({gameid: msg.general.gameid});
 
         if (this.gamestate != msg.general.state) {
             this.changeMode(msg.general.state);
@@ -591,30 +589,49 @@
         this.this_proposal = msg.general.this_proposal;
 
         var lastvote = {};
-        if (msg.general.last_votes !== null) {
-            for (var i = 0; i < msg.general.last_votes.length; i++) {
-                if (msg.general.last_votes[i]) {
+        var last_votes;
+        if (msg.general.votes.length > 0) {
+            last_votes = msg.general.votes[msg.general.votes.length - 1];
+        }
+
+        if (last_votes) {
+            for (var i = 0; i < last_votes.votes.length; i++) {
+                if (last_votes.votes[i]) {
                     lastvote[i] = "approve";
                 }
                 else {
                     lastvote[i] = "reject";
                 }
             }
+
+            if (msg.general.state != 'mission') {
+                var icons = {};
+                icons[last_votes.leader] = 'ui-icon-star';
+                this.renderPlayers(last_votes.players, {}, icons, this.ui.$lastproposalplayers);
+                this.ui.$lastproposal.show();
+            }
+            else {
+                this.ui.$lastproposal.hide();
+            }
+        }
+        else {
+            this.ui.$lastproposal.hide();
         }
 
         var tableplayers = [];
         for (var i = 0; i < msg.general.players.length; i++) {
             tableplayers.push(i);
         }
-        this.renderPlayers(tableplayers, lastvote, this.ui.$tableplayers);
+        var readyicons = {};
 
         this.ui.$leader.text(this.playerName(msg.general.leader));
         this.ui.$thismission.text(msg.general.this_mission);
         this.ui.$thisproposal.text(msg.general.this_proposal);
 
-        this.renderMissions(msg.general.mission_results);
+        this.renderMissions(msg.general.setup, msg.general.mission_results);
 
         if (msg.general.state == 'picking') {
+            readyicons[msg.general.leader] = 'ui-icon-comment';
             if (msg.general.leader == this.mypos && this.leader != this.mypos) {
                 this.becomeLeader();
             }
@@ -625,10 +642,36 @@
             this.ui.$count.text(msg.mission_size);
         }
         else if (msg.general.state == 'voting') {
-            this.renderPlayers(msg.mission_players, {}, this.ui.$missionplayers);
+            for (var i = 0; i < msg.voted_players.length; i++) {
+                var icon;
+                if (msg.voted_players[i]) {
+                    icon = 'ui-icon-check';
+                }
+                else {
+                    icon = 'ui-icon-comment';
+                }
+                readyicons[i] = icon;
+            }
+
+            var icons = {};
+            icons[msg.general.leader] = 'ui-icon-star';
+            this.renderPlayers(msg.mission_players, {}, icons, this.ui.$missionplayers);
         }
         else if (msg.general.state == 'mission') {
-            var mymission = this.renderPlayers(msg.mission_players, {}, this.ui.$missionplayers);
+            for (var i = 0; i < msg.mission_players.length; i++) {
+                var icon;
+                if (msg.acted_players[i]) {
+                    icon = 'ui-icon-check';
+                }
+                else {
+                    icon = 'ui-icon-comment';
+                }
+                readyicons[msg.mission_players[i]] = icon;
+            }
+
+            var icons = {};
+            icons[msg.general.leader] = 'ui-icon-star';
+            var mymission = this.renderPlayers(msg.mission_players, {}, icons, this.ui.$missionplayers);
 
             if (mymission) {
                 this.ui.$success.prop('disabled', !msg.allow_success);
@@ -638,10 +681,13 @@
         }
         else if (msg.general.state == 'gameover') {
             this.ui.$result.text(msg.result);
+            this.ui.$comment.text(msg.comment);
 
-            this.renderPlayers(msg.general.players, msg.cards, this.ui.$playercards);
+            this.renderPlayers(tableplayers, msg.cards, {}, this.ui.$playercards);
             this.stopInterval();
         }
+
+        this.renderPlayers(tableplayers, lastvote, readyicons, this.ui.$tableplayers);
     };
 
     App.prototype.inrefresh = false;

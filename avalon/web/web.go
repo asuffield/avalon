@@ -8,14 +8,13 @@ import (
 	"errors"
 	"github.com/gorilla/sessions"
 	"net/http"
-    "log"
 )
 
 // Store initializes the Gorilla session store.
 var Store = sessions.NewCookieStore([]byte(keys.CookieKey1Auth), []byte(keys.CookieKey1Encr))
 
-type AppHandler func(http.ResponseWriter, *http.Request, *sessions.Session) *AppError
-type AjaxHandler func(http.ResponseWriter, *http.Request, *sessions.Session) *AppError
+type AppHandler func(http.ResponseWriter, *http.Request, appengine.Context, *sessions.Session) *AppError
+type AjaxHandler func(http.ResponseWriter, *http.Request, appengine.Context, *sessions.Session) *AppError
 type GameHandler func(http.ResponseWriter, *http.Request, appengine.Context, *sessions.Session, data.Game, int) *AppError
 
 type AppError struct {
@@ -27,9 +26,10 @@ type AppError struct {
 // serveHTTP formats and passes up an error
 func (fn AppHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	session, _ := Store.Get(r, "sessionName")
+	c := appengine.NewContext(r)
 
-	if e := fn(w, r, session); e != nil {
-		log.Printf("%s: %s", e.Message, e.Err)
+	if e := fn(w, r, c, session); e != nil {
+		c.Errorf("%s: %s", e.Message, e.Err)
 		http.Error(w, e.Message, e.Code)
 	}
 }
@@ -37,7 +37,7 @@ func (fn AppHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func ajax_cors(w http.ResponseWriter, r *http.Request) bool {
 	w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("origin"))
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "accept, content-type, cookie")
+	w.Header().Set("Access-Control-Allow-Headers", "accept, content-type, cookie, x-csrf-token")
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
@@ -53,8 +53,17 @@ func (fn AjaxHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	session, _ := Store.Get(r, "sessionName")
 
-	if e := fn(w, r, session); e != nil { // e is *AppError, not os.Error.
-		log.Printf("%s: %s", e.Message, e.Err)
+	state := session.Values["state"].(string)
+	csrfToken  := r.Header.Get("x-csrf-token")
+	if csrfToken != state {
+		http.Error(w, "Invalid CSRF token", 403)
+		return
+	}
+
+	c := appengine.NewContext(r)
+
+	if e := fn(w, r, c, session); e != nil { // e is *AppError, not os.Error.
+		c.Errorf("%s: %s", e.Message, e.Err)
 		http.Error(w, e.Message, e.Code)
 	}
 }
@@ -101,18 +110,26 @@ func (fn GameHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	session, _ := Store.Get(r, "sessionName")
+
+	state := session.Values["state"].(string)
+	csrfToken  := r.Header.Get("x-csrf-token")
+	if csrfToken != state {
+		http.Error(w, "Invalid CSRF token", 403)
+		return
+	}
+
 	c := appengine.NewContext(r)
 	var game data.Game
 	var mypos int
 	e := gameSetup(w, r, c, session, &game, &mypos)
 	if e != nil {
-		log.Printf("%s: %s", e.Message, e.Err)
+		c.Errorf("%s: %s", e.Message, e.Err)
 		http.Error(w, e.Message, e.Code)
 		return
 	}
 
 	if e = fn(w, r, c, session, game, mypos); e != nil { // e is *AppError, not os.Error.
-		log.Printf("%s: %s", e.Message, e.Err)
+		c.Errorf("%s: %s", e.Message, e.Err)
 		http.Error(w, e.Message, e.Code)
 	}
 }

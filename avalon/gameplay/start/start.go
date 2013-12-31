@@ -5,6 +5,7 @@ import (
 	"appengine/datastore"
 	"avalon/data"
 	"avalon/db"
+	"avalon/db/trans"
 	"avalon/gameplay"
 	"avalon/gameplay/state"
 	"avalon/web"
@@ -48,7 +49,7 @@ func shuffle_players(player_data []PlayerData) ([]string, []string) {
 }
 
 func game_factory(gamestartdata GameStartData) db.GameFactory {
-	return func(gameid string, hangoutid string) data.Game {
+	return func(gameid string, hangoutid string) (data.Game, []string) {
 		player_data := make([]PlayerData, 0)
 		for k, v := range gamestartdata.Participants {
 			player_data = append(player_data, PlayerData{UserID: v, Name: k})
@@ -72,17 +73,6 @@ func game_factory(gamestartdata GameStartData) db.GameFactory {
 			}
 		}
 
-		gamestate := data.GameState{
-			PlayerIDs: players,
-			Leader: -1, // See comment in ReqGameStart - this is the "start of game" marker
-			ThisMission: 0,
-			ThisProposal: 0,
-			LastVoteMission: -1,
-			LastVoteProposal: -1,
-			GoodScore: 0,
-			EvilScore: 0,
-			GameOver: false,
-		}
 		gamestatic := data.GameStatic{
 			Id: gameid,
 			Hangout: hangoutid,
@@ -92,32 +82,43 @@ func game_factory(gamestartdata GameStartData) db.GameFactory {
 			Setup: data.MakeGameSetup(len(players)),
 			Roles: mathrand.Perm(len(players)),
 		}
+		gamestate := data.GameState{
+			HaveProposal: false,
 
-		return data.Game{gamestatic, &gamestate}
+			Leader: -1, // See comment in ReqGameStart - this is the "start of game" marker
+			ThisProposal: 0,
+			HaveActions: false,
+
+			ThisMission: 0,
+			MissionsComplete: make([]bool, len(gamestatic.Setup.Missions)),
+			GoodScore: 0,
+			EvilScore: 0,
+			GameOver: false,
+
+			ThisVote: 0,
+		}
+
+		return data.Game{gamestatic, &gamestate}, players
 	}
 }
 
 func DoStartGame(c appengine.Context, game data.Game) *web.AppError {
-	// We use leader == -1 as a "start of game" indicator, to make
-	// sure we go through this step exactly once
-	// This can go away when the AI code is removed
-	if game.State.Leader == -1 {
-		game.State.Leader = 0
+	return trans.RunGameTransaction(c, &game, func(tc appengine.Context, game data.Game) *web.AppError {
+		// We use leader == -1 as a "start of game" indicator, to make
+		// sure we go through this step exactly once
+		// This can go away when the AI code is removed
+		if game.State.Leader == -1 {
+			game.State.Leader = 0
 
-		var aerr *web.AppError
-		err := datastore.RunInTransaction(c, func(tc appengine.Context) error {
-			aerr = gameplay.StartPicking(tc, game)
-			return nil
-		}, nil)
-		if err != nil {
-			return &web.AppError{err, "Error starting game (transaction failed?)", 500}
-		}
-		if aerr != nil {
-			return aerr
-		}
-	}
+			err := db.StoreGameState(c, game)
+			if err != nil {
+				return &web.AppError{err, "Error storing game", 500}
+			}
 
-	return nil
+			return gameplay.StartPicking(tc, game)
+		}
+		return nil
+	})
 }
 
 func DoGameStartOrJoin(c appengine.Context, session *sessions.Session, factory db.GameFactory) (*data.Game, int, *web.AppError) {
@@ -135,11 +136,6 @@ func DoGameStartOrJoin(c appengine.Context, session *sessions.Session, factory d
 		// We can only get here if factory is nil
 		m := "No game here to join"
 		return nil, -1, &web.AppError{errors.New(m), m, 404}
-	}
-
-	err = db.EnsureGameState(c, pgame)
-	if err != nil {
-		return nil, -1, &web.AppError{err, "Error retrieving game state", 500}
 	}
 
 	aerr := DoStartGame(c, *pgame)
@@ -169,9 +165,10 @@ func JoinGame(c appengine.Context, session *sessions.Session, game data.Game) (i
 	// Our participantID might have changed since the game started (if
 	// we left and rejoined) so update it here
 	participantID, _ := session.Values["participantID"].(string)
-	if game.State.PlayerIDs[mypos] != participantID {
-		game.State.PlayerIDs[mypos] = participantID
-		db.StoreGameState(c, game)
+
+	err := db.StorePlayerID(c, game, mypos, participantID)
+	if err != nil {
+		return -1, &web.AppError{err, "Error updating participant ID", 500}
 	}
 
 	session.Values["gameID"] = game.Id
@@ -224,7 +221,7 @@ func ValidateGameStart(session *sessions.Session, gamestartdata GameStartData) *
 	return nil
 }
 
-func ReqGameStart(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+func ReqGameStart(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session) *web.AppError {
 	var gamestartdata GameStartData
 	err := json.NewDecoder(r.Body).Decode(&gamestartdata)
 	if err != nil {
@@ -236,7 +233,6 @@ func ReqGameStart(w http.ResponseWriter, r *http.Request, session *sessions.Sess
 		return aerr
 	}
 
-	c := appengine.NewContext(r)
 	pgame, mypos, aerr := DoGameStartOrJoin(c, session, game_factory(gamestartdata))
 	if aerr != nil {
 		return aerr
@@ -260,13 +256,12 @@ func ValidateGameJoin(session *sessions.Session) *web.AppError {
 	return nil
 }
 
-func ReqGameJoin(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+func ReqGameJoin(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session) *web.AppError {
 	aerr := ValidateGameJoin(session)
 	if aerr != nil {
 		return aerr
 	}
 
-	c := appengine.NewContext(r)
 	pgame, mypos, aerr := DoGameStartOrJoin(c, session, nil)
 	if aerr != nil {
 		return aerr

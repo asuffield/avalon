@@ -17,29 +17,27 @@ func init() {
 
 type DumpProposal struct {
 	Proposal *data.Proposal
-	Votes map[int]bool
 }
 
 type DumpMission struct {
 	Proposals []DumpProposal
-	Mission *int
-	Actions map[int]bool
+	Actions *data.Actions
 }
 
 type DumpGameData struct {
 	Missions []DumpMission
-	Results []data.MissionResult
+	MissionResults []*data.MissionResult
+	VoteResults []data.VoteResult
+	PlayerIDs []string
 	Game data.Game
 }
 
 var recentGamesTemplate = template.Must(template.ParseFiles("template/recentgames.html"))
 var dumpGameTemplate = template.Must(template.ParseFiles("template/dumpgame.html"))
 
-func ReqDumpGame(w http.ResponseWriter, r *http.Request, session *sessions.Session) *web.AppError {
+func ReqDumpGame(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session) *web.AppError {
 	hangout := r.FormValue("hangout")
 	gameid := r.FormValue("game")
-
-	c := appengine.NewContext(r)
 
 	if hangout == "" || gameid == "" {
 		games, err := db.RecentGames(c, 20)
@@ -63,7 +61,7 @@ func ReqDumpGame(w http.ResponseWriter, r *http.Request, session *sessions.Sessi
 		m := "Could not find game"
 		return &web.AppError{errors.New(m), m, 404}
 	}
-	err = db.EnsureGameState(c, pgame)
+	err = db.EnsureGameState(c, pgame, true)
 	if err != nil {
 		return &web.AppError{err, "Could not retrieve game state", 500}
 	}
@@ -72,17 +70,23 @@ func ReqDumpGame(w http.ResponseWriter, r *http.Request, session *sessions.Sessi
 	missions := make([]DumpMission, 5)
 	for m := 0; m < 5; m++ {
 		missions[m].Proposals = make([]DumpProposal, 5)
-		missions[m].Mission, _ = db.GetMission(c, game, m)
-		missions[m].Actions, _ = db.GetActions(c, game, m)
+		missions[m].Actions, _ = db.GetActions(c, true, game, m)
 		for p := 0; p < 5; p++ {
-			missions[m].Proposals[p].Proposal, _ = db.GetProposal(c, game, m, p)
-			missions[m].Proposals[p].Votes, _ = db.GetVotes(c, game, m, p)
+			missions[m].Proposals[p].Proposal, _ = db.GetProposal(c, true, game, m, p)
 		}
 	}
 
-	results, _ := db.GetMissionResults(c, game)
+	playerids, _ := db.GetPlayerIDs(c, game)
+	missionresults, _ := db.GetMissionResults(c, game)
+	voteresults, _ := db.GetVoteResults(c, game)
 
-	dump := DumpGameData{ Game: game, Missions: missions, Results: results }
+	dump := DumpGameData{
+		Game: game,
+		PlayerIDs: playerids,
+		Missions: missions,
+		MissionResults: missionresults,
+		VoteResults: voteresults,
+	}
 
 	w.Header().Set("Content-Type", "text/html")
 	err = dumpGameTemplate.Execute(w, dump)
