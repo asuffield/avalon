@@ -169,12 +169,11 @@
     };
 
     App.prototype.gameStart = function(gameid) {
-        console.log("gameStart(" + gameid + "), old == " + this.gameid)
         this.this_mission = null;
         this.this_proposal = null;
         this.leader = null;
         this.gameid = gameid;
-        this.renderedmissions = 0;
+        this.renderedmissions = -1;
 
         this.revealRoles();
         $('.info-box').show();
@@ -443,15 +442,44 @@
         this.$msgbox.empty();
         this.$msgbox.dialog('option', 'title', 'You can see...');
 
+        var card_counts = {};
+        for (var i = 0; i < this.gamesetup.cards.length; i++) {
+            var label = this.gamesetup.cards[i];
+            card_counts[label] = (card_counts[label] || 0) + 1;
+        }
+
+        var cards = [];
+        for (var card in card_counts) {
+            if (card_counts[card] == 1) {
+                cards.push(card);
+            }
+            else {
+                cards.push(card + "\xa0x" + card_counts[card]);
+            }
+        }
+        cards.sort();
+        var $setupbox = $("<div class='revealsetup'/>");
+        $setupbox.text("Cards in the game")
+        var $cardlist = $("<div class='cards'/>");
+        $setupbox.append($cardlist);
+        for (var i = 0; i < cards.length; i++) {
+            var $cardbox = $("<div class='card'/>");
+            $cardbox.text(cards[i]);
+            $cardlist.append($cardbox);
+        }
+
+        this.$msgbox.append($setupbox);
+
         for (var i = 0; i < msg.length; i++) {
             var $box = $("<div class='reveal'/>");
             $box.text(msg[i].label);
             var $list = $("<div class='players'/>");
-            this.renderPlayers(msg[i].players, {}, {}, $list);
+            this.renderPlayers(msg[i].players, {}, null, $list);
             $box.append($list);
             this.$msgbox.append($box);
         }
 
+        this.$msgbox.dialog("option", "dialogClass", "reveal-dialog");
         this.$msgbox.dialog("open");
     };
 
@@ -506,12 +534,14 @@
                 text += ': ' + data[i];
             }
             $player.text(text);
-            $player.prepend($iconbox);
-            if (players[i] in icons) {
-                var $icon = $("<span class='player-icon ui-icon'></span>");
-                $icon.addClass(icons[players[i]]);
-                $iconbox.append($icon);
-                //text = ' ' + text;
+            if (icons) {
+                $player.prepend($iconbox);
+                if (players[i] in icons) {
+                    var $icon = $("<span class='player-icon ui-icon'></span>");
+                    $icon.addClass(icons[players[i]]);
+                    $iconbox.append($icon);
+                    //text = ' ' + text;
+                }
             }
             $list.append($player);
             if (players[i] == this.mypos) {
@@ -531,15 +561,22 @@
         var missions = [];
         for (var i = 0; i < setup.missions.length; i++) {
             var $missionbox = $("<div class='mission'/>");
-            text = setup.missions[i].size;
+            var text = setup.missions[i].size;
+            var hint = "Mission " + (i+1) + " will have " + setup.missions[i].size + " players"
             if (setup.missions[i].fails_allowed > 0) {
                 text += "*";
+                hint += ", and will only fail if " + setup.missions[i].fails_allowed + " fail cards are present";
             }
             $missionbox.text(text);
+            $missionbox.attr('title', hint);
             missions.push($missionbox);
             this.ui.$missionstatus.append($missionbox);
             // This is vital to word-splitting for the css justification magic
             this.ui.$missionstatus.append(' ');
+
+            $missionbox.tooltip({tooltipClass: 'mission-tooltip',
+                                 position: {my: "center top", at: "center bottom+10", collision: "fit", within: $("#main")},
+                                });
         }
         this.ui.$missionstatus.append($("<span class='stretch'/>"));
         for (var i = 0; i < results.length; i++) {
@@ -556,7 +593,6 @@
                 text += " (" + results[i].fails + " fails)"
             }
             $mission.attr('title', text);
-            $mission.tooltip();
         }
         missions[this.this_mission - 1].addClass('current');
         this.renderedmissions = results.length;
@@ -569,6 +605,7 @@
         this.mypos = this.players.indexOf(this.myid);
         this.results = msg.general.results;
         this.votes = msg.general.votes;
+        this.gamesetup = msg.general.setup;
 
         if (this.gameid != msg.general.gameid) {
             console.log("/state said we need to change games");
@@ -674,8 +711,8 @@
             var mymission = this.renderPlayers(msg.mission_players, {}, icons, this.ui.$missionplayers);
 
             if (mymission) {
-                this.ui.$success.prop('disabled', !msg.allow_success);
-                this.ui.$failure.prop('disabled', !msg.allow_failure);
+                this.ui.$success.prop('disabled', !msg.allow_actions['Success']);
+                this.ui.$failure.prop('disabled', !msg.allow_actions['Failure']);
                 this.ui.$pickbox.show();
             }
         }

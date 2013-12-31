@@ -98,7 +98,7 @@ func game_factory(gamestartdata GameStartData) db.GameFactory {
 			ThisVote: 0,
 		}
 
-		return data.Game{gamestatic, &gamestate}, players
+		return data.Game{GameStatic: gamestatic, State: &gamestate}, players
 	}
 }
 
@@ -176,31 +176,16 @@ func JoinGame(c appengine.Context, session *sessions.Session, game data.Game) (i
 	return mypos, nil
 }
 
-type GameReveal struct {
-	Players []int `json:"players"`
-	Label string `json:"label"`
-}
-
-func GetGameReveal(game data.Game, mypos int) []GameReveal {
+func GetGameReveal(game data.Game, mypos int) []data.GameReveal {
 	myrole := game.Roles[mypos]
-	mycard := game.Setup.Cards[myrole]
+	mycard := game.Cards[myrole]
 
-	reveals := make([]GameReveal, 1)
+	reveals := make([]data.GameReveal, 1)
 
-	reveals[0] = GameReveal{Label: "Your card: " + game.Setup.Cards[myrole].Label, Players: []int{} }
+	reveals[0] = data.GameReveal{Label: "Your card: " + mycard.Label(), Players: []int{} }
 
-	if mycard.Spy {
-		players := make([]int, 0)
-		for i, role := range game.Roles {
-			card := game.Setup.Cards[role]
-			if card.Spy {
-				players = append(players, i)
-			}
-		}
-		reveals = append(reveals, GameReveal{
-			Label: "These are the evil players",
-			Players: players,
-		})
+	for _, reveal := range mycard.Reveal(game) {
+		reveals = append(reveals, reveal)
 	}
 
 	return reveals

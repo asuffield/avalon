@@ -42,8 +42,7 @@ type GameStateMission struct {
 	General GameStateGeneral `json:"general"`
 	MissionPlayers []int `json:"mission_players"`
 	ActedPlayers []bool `json:"acted_players"`
-	AllowSuccess bool `json:"allow_success"`
-	AllowFailure bool `json:"allow_failure"`
+	AllowActions map[string]bool `json:"allow_actions"`
 }
 
 type GameStateOver struct {
@@ -76,8 +75,8 @@ func MakeGameState(game data.Game, playerids []string, results []*data.MissionRe
 		}
 
 		myrole := game.Roles[mypos]
-		mycard := game.Setup.Cards[myrole]
-		if mycard.Spy == (game.State.EvilScore >= 3) {
+		mycard := game.Cards[myrole]
+		if mycard.HasWon(game) {
 			comment = "Victory!"
 		} else {
 			comment = "Defeat!"
@@ -85,7 +84,7 @@ func MakeGameState(game data.Game, playerids []string, results []*data.MissionRe
 
 		cards := make([]string, len(game.Roles))
 		for i, role := range game.Roles {
-			cards[i] = game.Setup.Cards[role].Label
+			cards[i] = game.Cards[role].Label()
 		}
 
 		general.State = "gameover"
@@ -127,8 +126,7 @@ func MakeGameState(game data.Game, playerids []string, results []*data.MissionRe
 		General: general,
 		MissionPlayers: missionplayers,
 		ActedPlayers: actions.Acted,
-		AllowSuccess: true,
-		AllowFailure: game.Setup.Cards[myrole].Spy,
+		AllowActions: game.Cards[myrole].PermittedActions(game, *proposal),
 	}
 }
 

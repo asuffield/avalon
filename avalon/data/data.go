@@ -6,20 +6,36 @@ import (
 	"time"
 )
 
+type GameReveal struct {
+	Players []int `json:"players"`
+	Label string `json:"label"`
+}
+
+type CardOps interface {
+	// This returns the card's label
+	Label() string
+	// This is true if the card takes up a spy slot during game creation
+	AllocatedAsSpy() bool
+	// This is true if the card has won the game
+	HasWon(Game) bool
+	// This returns a map of actions to offer, which is true if that
+	// action should be allowed at the moment
+	PermittedActions(Game, Proposal) map[string]bool
+	// This returns some GameReveal objects for this card, at reveal time
+	Reveal(Game) []GameReveal
+	// This is a utility function for composing Reveal - it is true if
+	// this card should not be revealed to the argument
+	HiddenFrom(Game, CardOps) bool
+}
+
 type Mission struct {
 	Size int `json:"size"`
 	FailsAllowed int `json:"fails_allowed"`
 }
 
-type Card struct {
-	Spy bool `json:"spy"`
-	Label string `json:"label"`
-}
-
 type GameSetup struct {
 	Missions []Mission `json:"missions"`
-	Cards []Card `json:"cards"`
-	Spies int `json:"spies"`
+	Cards []string `json:"cards"`
 }
 
 type Proposal struct {
@@ -60,6 +76,7 @@ type GameStatic struct {
 type Game struct {
 	GameStatic
 	State *GameState
+	Cards []CardOps
 }
 
 type Actions struct {
@@ -111,16 +128,9 @@ func MakeGameSetup(players int) GameSetup {
 	}
 
 	missions := []Mission { Mission{2, 0}, Mission{3, 0}, Mission{2, 0}, Mission{3, 0}, Mission{3, 0} }
-	cards := []Card { Card{false, "Good"}, Card{false, "Good"}, Card{false, "Good"}, Card{true, "Evil"}, Card{true, "Evil"} }
+	cards := []string { "Good", "Good", "Good", "Evil", "Evil" }
 
-	spycount := 0
-	for _, card := range cards {
-		if card.Spy {
-			spycount++
-		}
-	}
-
-	return GameSetup{Missions: missions, Cards: cards, Spies: spycount}
+	return GameSetup{Missions: missions, Cards: cards}
 }
 
 func RandomString(length int) (str string) {

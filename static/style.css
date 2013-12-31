@@ -6,22 +6,44 @@
     margin: 5px;
 }
 
+html {
+    height: 100%;
+}
+
+body {
+    height: 100%;
+}
+
+div.outer-frame {
+    padding: 10px;
+    height: calc(100% - 20px);
+}
+
+#main {
+    height: calc(100% - 10px);
+}
+
 .main-box {
     display: none;
     margin-top: 20px;
-    margin-left: 10px;
-    margin-right: 10px;
     padding: 10px;
     border: 1px solid rgb(127,127,127);
+}
+
+.main-box.start-mode {
+    margin-top: 10px;
+    border: 0px;
 }
 
 .info-box {
     display: none;
     margin-top: 20px;
-    margin-left: 10px;
-    margin-right: 10px;
     padding: 10px;
     border: 1px solid rgb(127,127,127);
+}
+
+.info-box.game-status {
+    margin-top: 10px;
 }
 
 .loading-mode {
@@ -71,6 +93,10 @@ div.proposal {
     font-weight: bold;
 }
 
+.mission-tooltip {
+    font-size: 16px;
+}
+
 .mission-results {
     text-align: center;
     border: 0px;
@@ -111,5 +137,29 @@ div.proposal {
 
 .mission-results .mission-status .stretch {
     width: 100%;
+    display: inline-block;
+}
+
+.reveal-dialog .ui-dialog-content {
+    font-size: 16px;
+}
+
+div.revealsetup {
+}
+
+div.revealsetup .cards {
+    margin-left: 20px;
+    line-height: 1.3em;
+    text-align: left;
+}
+
+div.reveal {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgb(200,200,200);
+}
+
+div.vstretch {
+    height: 100%;
     display: inline-block;
 }

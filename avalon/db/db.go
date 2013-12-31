@@ -5,6 +5,7 @@ import (
 	"appengine/datastore"
 	"appengine/memcache"
 	"avalon/data"
+	"avalon/data/cards"
 	"strconv"
 	"strings"
 	"time"
@@ -80,8 +81,10 @@ func FindOrCreateGame(c appengine.Context, hangout string, factory GameFactory) 
 		if err != nil {
 			return nil, err
 		}
-		// If the most recently started game is over, we'll create a new game
+		// If the most recently started game is over, we'll create a
+		// new game; otherwise, return it
 		if !game.State.GameOver {
+			fillCardOps(&game)
 			return &game, nil
 		}
 	}
@@ -103,6 +106,7 @@ func FindOrCreateGame(c appengine.Context, hangout string, factory GameFactory) 
 	}
 
 	game, playerids := factory(gameid, hangout)
+	fillCardOps(&game)
 
 	err = privStoreGame(c, game)
 	if err != nil {
@@ -237,6 +241,16 @@ func FlushGameStateCache(c appengine.Context, game data.Game) error {
 	return nil
 }
 
+func fillCardOps(game *data.Game) {
+	// This function creates the objects we'll actually be using,
+	// since we can't store types in datastore - game.Setup.Cards just
+	// stashes their labels
+	game.Cards = make([]data.CardOps, len(game.Setup.Cards))
+	for i, label := range game.Setup.Cards {
+		game.Cards[i] = cards.CardFactory[label]()
+	}
+}
+
 func RetrieveGame(c appengine.Context, hangoutid string, gameid string) (*data.Game, error) {
 	gamestatic, err := RetrieveGameStatic(c, hangoutid, gameid)
 	if err != nil {
@@ -246,6 +260,7 @@ func RetrieveGame(c appengine.Context, hangoutid string, gameid string) (*data.G
 		return nil, nil
 	}
 	game := data.Game{GameStatic: *gamestatic, State: nil}
+	fillCardOps(&game)
 	return &game, nil
 }
 

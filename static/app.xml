@@ -41,6 +41,7 @@
 
 <style>.main-box { display: none; }</style>
 
+<div class='outer-frame'>
 <div id="main">
     <div class='info-box game-status'>
         <div class='gameinfo'>Current leader: <span class='leader'/></div>
@@ -95,8 +96,8 @@
         </div>
         <form class='mission' id='mission'>
             Select your action:<br/>
-            <input class='success' type='radio' name='action' value='success'>Success</input><br/>
-            <input class='fail' type='radio' name='action' value='fail'>Fail</input><br/>
+            <input class='success' type='radio' name='action' value='Success'>Success</input><br/>
+            <input class='fail' type='radio' name='action' value='Fail'>Fail</input><br/>
             <button>Commit</button>
         </form>
     </div>
@@ -131,7 +132,7 @@
 
     <div class='info-box mission-results'>
         Missions
-        <div class='mission-status'/>
+        <div class='mission-status'></div>
     </div>
 
     <div class='debug'>
@@ -141,9 +142,6 @@
         <button id='refresh'>Refresh once</button>
     </div>
 </div>
-
-<div id="scoreboard">
-
 </div>
 
 <script src="//trim-mariner-422.appspot.com/app.js"></script>

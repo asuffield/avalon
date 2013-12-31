@@ -60,8 +60,9 @@ func ai_actions(c appengine.Context, game data.Game, proposal data.Proposal, act
 	for _, i := range game.AIs {
 		if is_present[i] {
 			role := game.Roles[i]
-			card := game.Setup.Cards[role]
-			action := !card.Spy
+			card := game.Cards[role]
+			permitted := card.PermittedActions(game, proposal)
+			action := !permitted["Failure"]
 			//log.Printf("AI %s action: %v", game.Players[i], action)
 			aerr := do_action(c, game, i, action, proposal, actions)
 			if aerr != nil {
@@ -543,17 +544,13 @@ func ValidateGameMission(game data.Game, actiondata ActionData, mypos int, propo
 		return &web.AppError{errors.New(m), m, 400}
 	}
 
-	if actiondata.Action != "success" && actiondata.Action != "fail" {
-		m := "Invalid action " + actiondata.Action
-		return &web.AppError{errors.New(m), m, 400}
-	}
-
-	action := actiondata.Action == "success"
 	myrole := game.Roles[mypos]
-	mycard := game.Setup.Cards[myrole]
+	card := game.Cards[myrole]
+	// Absent is the same error as known-but-forbidden
+	permitted := card.PermittedActions(game, *proposal)[actiondata.Action]
 
-	if !action && !mycard.Spy {
-		m := "Invalid action - must pick success"
+	if !permitted {
+		m := "Invalid action " + actiondata.Action
 		return &web.AppError{errors.New(m), m, 400}
 	}
 
