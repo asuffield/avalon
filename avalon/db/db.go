@@ -139,7 +139,7 @@ func cacheGetGameStatic(c appengine.Context, hangoutid string, gameid string) *d
 }
 
 func cacheSetGameStatic(c appengine.Context, gamestatic data.GameStatic) {
-	cacheSetObject(c, "GameStatic", gameStaticCacheKey(gamestatic.Hangout, gamestatic.Id), 0, gamestatic)
+	cacheSetObject(c, "GameStatic", gameStaticCacheKey(gamestatic.Hangout, gamestatic.Id), 600, gamestatic)
 }
 
 func privStoreGame(c appengine.Context, game data.Game) error {
@@ -279,7 +279,7 @@ func cacheGetPlayerID(c appengine.Context, game data.Game, pos int) string {
 }
 
 func cacheSetPlayerID(c appengine.Context, game data.Game, pos int, playerID string) {
-	cacheSetObject(c, "PlayerID", playerIDCacheKey(game, pos), 0, StringStore {playerID})
+	cacheSetObject(c, "PlayerID", playerIDCacheKey(game, pos), 600, StringStore {playerID})
 }
 
 func cacheDeletePlayerID(c appengine.Context, game data.Game, pos int) error {
@@ -470,7 +470,7 @@ func cacheGetMissionResult(c appengine.Context, game data.Game, m int) *data.Mis
 }
 
 func cacheSetMissionResult(c appengine.Context, game data.Game, m int, missionResult data.MissionResult) {
-	cacheSetObject(c, "MissionResult", missionResultCacheKey(game, m), 0, missionResult)
+	cacheSetObject(c, "MissionResult", missionResultCacheKey(game, m), 600, missionResult)
 }
 
 func StoreMissionResult(c appengine.Context, game data.Game, m int, result data.MissionResult) error {
@@ -528,7 +528,7 @@ func cacheGetVoteResult(c appengine.Context, game data.Game, r int) *data.VoteRe
 }
 
 func cacheSetVoteResult(c appengine.Context, game data.Game, r int, voteResult data.VoteResult) {
-	cacheSetObject(c, "VoteResult", voteResultCacheKey(game, r), 0, voteResult)
+	cacheSetObject(c, "VoteResult", voteResultCacheKey(game, r), 600, voteResult)
 }
 
 func StoreVoteResult(c appengine.Context, game data.Game, result data.VoteResult) error {
