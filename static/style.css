@@ -68,7 +68,7 @@ form.proposal {
     text-align: center;
 }
 
-div.proposal {
+.pick-mode div.proposal {
     text-align: left;
     margin-top: 5px;
     margin-left: 20px;
@@ -80,13 +80,13 @@ div.proposal {
 
 .restartbox {
     margin: 5px;
-    border: 1px solid black;
     padding: 5px;
 }
 
 .player-icon {
     display: inline-block;
     width: 16px;
+    vertical-align: text-bottom;
 }
 
 .gameover-mode .comment {
@@ -115,6 +115,7 @@ div.proposal {
 
 .mission-results .mission-status .mission {
     border-radius: 50%;
+    border: 1px solid transparent;
     color: rgb(110, 110, 110);
     display: inline-block;
     text-align: center;
@@ -132,12 +133,52 @@ div.proposal {
 }
 
 .mission-results .mission-status .mission.current {
-    border: 1px solid black;
+    border-color: black;
 }
 
 .mission-results .mission-status .stretch {
     width: 100%;
     display: inline-block;
+}
+
+.proposals {
+    text-align: center;
+    border: 0px;
+}
+
+.proposals .proposal-status {
+    margin-left: 30px;
+    margin-right: 30px;
+    margin-top: 10px;
+    font-size: 20px;
+    font-weight: bold;
+    text-align: justify;
+    height: 1.5em;
+    line-height: 1.5em;
+}
+
+.proposals .proposal-status .proposal {
+    border-radius: 50%;
+    border: 1px solid transparent;
+    color: rgb(110, 110, 110);
+    display: inline-block;
+    text-align: center;
+    width: 1.5em;
+}
+
+.proposals .proposal-status .proposal.current {
+    border-color: black;
+}
+
+.proposals .proposal-status .stretch {
+    width: 100%;
+    display: inline-block;
+}
+
+.proposal-icon {
+    display: inline-block;
+    width: 16px;
+    vertical-align: middle;
 }
 
 .reveal-dialog .ui-dialog-content {

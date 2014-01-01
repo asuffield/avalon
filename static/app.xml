@@ -119,6 +119,19 @@
         </form>
     </div>
 
+    <div class='main-box assassination-mode'>
+        <div class='gameinfobox'>
+            <div class='gameinfo'>Cards:
+              <div class='players playercards'></div>
+            </div>
+        </div>
+        <form class='assassinate' id='assassinate'>
+            Pick your target
+            <div class='targets'></div>
+            <button>Assassinate</button>
+        </form>
+    </div>
+
     <div class='main-box gameover-mode'>
         <div class='gameinfobox'>
             <div class='gameinfo'><span class='comment'/></div>
@@ -128,12 +141,7 @@
             </div>
         </div>
         <div class='restartbox'>
-           <button class='start-game'>Start a new game</button>
-           <div class='gameinfobox'>
-              <div class='gameinfo'>Players:
-                 <div class='players gameplayers'></div>
-              </div>
-           </div>
+           <button class='setup-new-game'>Start a new game</button>
         </div>
     </div>
 
@@ -150,6 +158,11 @@
     <div class='info-box mission-results'>
         Missions
         <div class='mission-status'></div>
+    </div>
+
+    <div class='info-box proposals'>
+        Proposals
+        <div class='proposal-status'></div>
     </div>
 
     <div class='debug'>

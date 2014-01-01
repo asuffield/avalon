@@ -76,7 +76,7 @@ func MakeGameState(game data.Game, playerids []string, results []*data.MissionRe
 		var result string
 		var comment string
 
-		if game.State.AssassinTarget != -1 && game.Cards[game.State.AssassinTarget].Label() == "Merlin" {
+		if game.State.AssassinTarget != -1 && game.Cards[game.Roles[game.State.AssassinTarget]].Label() == "Merlin" {
 			result = "Merlin has been assassinated"
 		} else if game.State.GoodScore >= 3 {
 			result = "Good has won"

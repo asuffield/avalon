@@ -12,9 +12,11 @@
         window.apis_ready.done(this.onApiReady.bind(this));
 
         $('button.start-game').click(this.gameStartClick.bind(this));
+        $('button.setup-new-game').click(this.gameSetupNew.bind(this));
         $('div.pick-mode form.proposal button').click(this.commitProposal.bind(this));
         $('div.voting-mode form.vote button').click(this.commitVote.bind(this));
         $('div.mission-mode form.mission button').click(this.commitMission.bind(this));
+        $('div.assassination-mode form.assassinate button').click(this.commitAssassinate.bind(this));
 
         var that = this;
         $(document).keypress(function (e) {if (e.which == 172) {$('div.debug').show();}});
@@ -114,6 +116,11 @@
         this.startMode();
     };
 
+    App.prototype.gameSetupNew = function() {
+        $('.info-box').hide();
+        this.gameReady();
+    };
+
     App.prototype.showGamePlayers = function() {
         if (this.gamestate != 'start' && this.gamestate != 'gameover') {
             return;
@@ -159,11 +166,24 @@
         var goodcards = this.ui.$goodcards.children(".selected").map(function() {return $(this).data("label")}).get();
         var evilcards = this.ui.$evilcards.children(".selected").map(function() {return $(this).data("label")}).get();
 
+        var need_assassin = false;
+        for (var i = 0; i < goodcards.length; i++) {
+            if (goodcards[i] == "Merlin") {
+                need_assassin = true;
+            }
+        }
+
         for (var i = goodcards.length; i < this.setup_good_count; i++) {
             goodcards.push("Good");
         }
         for (var i = evilcards.length; i < this.setup_evil_count; i++) {
-            evilcards.push("Evil");
+            if (need_assassin) {
+                evilcards.push("Assassin");
+                need_assassin = false;
+            }
+            else {
+                evilcards.push("Evil");
+            }
         }
 
         var that = this;
@@ -184,6 +204,7 @@
         this.this_mission = null;
         this.this_proposal = null;
         this.leader = null;
+        this.assassin = null;
         this.gameid = gameid;
         this.renderedmissions = -1;
 
@@ -235,7 +256,7 @@
 
         // Remove the generic cards
         var goodcards = msg.good_cards.filter(function(e) {return e != "Good"});
-        var evilcards = msg.evil_cards.filter(function(e) {return e != "Evil"});
+        var evilcards = msg.evil_cards.filter(function(e) {return e != "Evil" && e != "Assassin"});
         goodcards.sort();
         evilcards.sort();
 
@@ -379,6 +400,26 @@
         $('div.mission-mode').show();
     };
 
+    App.prototype.resetAssassinationMode = function() {
+        this.ui.$playercards.empty();
+        this.ui.$pickbox.hide();
+        this.ui.$assassinate.prop('disabled', false);
+        this.ui.$pick.empty();
+    };
+
+    App.prototype.assassinationMode = function() {
+        this.ui.$playercards = $('div.assassination-mode div.playercards');
+
+        this.ui.$pickbox = $('div.assassination-mode form.assassinate');
+        this.ui.$pick = this.ui.$pickbox.children('div.targets');
+        this.ui.$assassinate = this.ui.$pickbox.children('button');
+
+        this.resetMode = this.resetAssassinationMode;
+        this.resetMode();
+
+        $('div.assassination-mode').show();
+    };
+
     App.prototype.resetGameoverMode = function() {
         this.ui.$result.text('');
         this.ui.$comment.text('');
@@ -418,6 +459,9 @@
         else if (state == 'mission') {
             this.missionMode();
         }
+        else if (state == 'assassination') {
+            this.assassinationMode();
+        }
         else if (state == 'gameover') {
             this.gameoverMode();
         }
@@ -429,6 +473,7 @@
         this.ui.$thismission = $('div.game-status span.thismission');
         this.ui.$thisproposal = $('div.game-status span.thisproposal');
         this.ui.$missionstatus = $('div.mission-results div.mission-status');
+        this.ui.$proposalstatus = $('div.proposals div.proposal-status');
     }
 
     App.prototype.commitProposal = function() {
@@ -436,9 +481,7 @@
             return false;
         }
 
-        console.log("commitProposal");
         var $selected = $('input:checked', '#proposal');
-        console.log($selected.length, this.missionsize);
         if ($selected.length != this.missionsize) {
             return false;
         }
@@ -528,12 +571,59 @@
         return false;
     };
 
+    App.prototype.commitAssassinate = function() {
+        if (this.gamestate != 'assassination') {
+            return false;
+        }
+
+        var $selected = $('input[name=target]:checked', '#assassinate');
+        if ($selected.length != 1) {
+            return false;
+        }
+
+        this.ui.$assassinate.prop('disabled', true);
+        this.ui.$pick.children('input').prop('disabled', true);
+
+        var target = parseInt($selected.val());
+        var that = this;
+
+        this.api('game/assassin',
+                 { target: target,
+                 }
+                ).done(this.handleGameState.bind(this))
+            .fail(function() {
+                that.ui.$assassinate.prop('disabled', false)
+                that.ui.$pick.children('input').prop('disabled', false);
+            });
+
+        return false;
+    };
+
     App.prototype.becomeLeader = function() {
         for (var i = 0; i < this.players.length; i++) {
-            var id = this.players[i];
             var $box = $("<div/>");
             var $label = $("<label/>");
             var $input = $("<input type='checkbox'/>");
+            $input.attr('value', i);
+            $box.append($label);
+            $label.text(this.playerName(i))
+            $label.prepend($input);
+            this.ui.$pick.append($box);
+        }
+
+        this.ui.$pickbox.show();
+    };
+
+    App.prototype.becomeAssassin = function(cards) {
+        for (var i = 0; i < cards.length; i++) {
+            if (cards[i] != "" ) {
+                // Skip over evil players
+                continue;
+            }
+
+            var $box = $("<div/>");
+            var $label = $("<label/>");
+            var $input = $("<input type='radio' name='target'/>");
             $input.attr('value', i);
             $box.append($label);
             $label.text(this.playerName(i))
@@ -656,7 +746,7 @@
             var $player = $("<div/>");
             var $iconbox = $("<div class='player-icon'/>");
             var text = this.playerName(players[i]);
-            if (i in data) {
+            if (i in data && data[i] != "") {
                 text += ': ' + data[i];
             }
             $player.text(text);
@@ -724,6 +814,27 @@
         this.renderedmissions = results.length;
     };
 
+    App.prototype.renderProposals = function() {
+        this.ui.$proposalstatus.empty();
+        for (var i = 1; i <= 5; i++) {
+            var $proposalbox = $("<div class='proposal'/>");
+            if (i >= this.this_proposal) {
+                $proposalbox.text(i);
+            }
+            else {
+                $proposalbox.append($("<span class='proposal-icon ui-icon ui-icon-close'/>"));
+            }
+            if (i == this.this_proposal) {
+                $proposalbox.addClass('current');
+            }
+
+            this.ui.$proposalstatus.append($proposalbox);
+            // This is vital to word-splitting for the css justification magic
+            this.ui.$proposalstatus.append(' ');
+        }
+        this.ui.$proposalstatus.append($("<span class='stretch'/>"));
+    };
+
     App.prototype.handleGameState = function (msg) {
         console.log(msg);
         this.fetchajax = null;
@@ -739,17 +850,24 @@
         }
         gapi.hangout.data.submitDelta({gameid: msg.general.gameid});
 
+        var update_proposals = false;
         if (this.gamestate != msg.general.state) {
             this.changeMode(msg.general.state);
+            update_proposals = true;
         }
         else if (this.this_mission != msg.general.this_mission || this.this_proposal != msg.general.this_proposal) {
             // We've gone through an entire cycle between refreshes,
             // so while we're in the same state, we need to reset it
             this.resetMode();
             this.leader = null;
+            update_proposals = true;
         }
         this.this_mission = msg.general.this_mission;
         this.this_proposal = msg.general.this_proposal;
+
+        if (update_proposals) {
+            this.renderProposals();
+        }
 
         var lastvote = {};
         var last_votes;
@@ -842,11 +960,30 @@
                 this.ui.$pickbox.show();
             }
         }
+        else if (msg.general.state == 'assassination') {
+            if (msg.assassin == this.mypos && this.assassin != this.mypos) {
+                this.becomeAssassin(msg.cards);
+            }
+            this.assassin = msg.assassin;
+            var icons = {};
+            icons[this.assassin] = 'ui-icon-star';
+            this.renderPlayers(tableplayers, msg.cards, icons, this.ui.$playercards);
+            if (msg.cards[this.mypos] == "") {
+                // If you're not revealed as an evil player, then mute
+                gapi.hangout.av.setMicrophoneMute(true);
+                gapi.hangout.av.setCameraMute(true);
+            }
+        }
         else if (msg.general.state == 'gameover') {
+            gapi.hangout.av.clearMicrophoneMute();
+            gapi.hangout.av.clearCameraMute();
+
             this.ui.$result.text(msg.result);
             this.ui.$comment.text(msg.comment);
 
-            this.renderPlayers(tableplayers, msg.cards, {}, this.ui.$playercards);
+            var icons = {};
+            icons[msg.assassin_target] = 'ui-icon-seek-next';
+            this.renderPlayers(tableplayers, msg.cards, icons, this.ui.$playercards);
             this.stopInterval();
         }
 

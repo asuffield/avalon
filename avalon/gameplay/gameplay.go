@@ -18,6 +18,7 @@ func init() {
 	http.Handle("/game/propose", web.GameHandler(ReqGamePropose))
 	http.Handle("/game/vote", web.GameHandler(ReqGameVote))
 	http.Handle("/game/mission", web.GameHandler(ReqGameMission))
+	http.Handle("/game/assassin", web.GameHandler(ReqGameAssassin))
 	http.Handle("/game/poke", web.GameHandler(ReqGamePoke))
 }
 
@@ -59,10 +60,11 @@ func ai_actions(c appengine.Context, game data.Game, proposal data.Proposal, act
 
 	for _, i := range game.AIs {
 		if is_present[i] {
-			role := game.Roles[i]
-			card := game.Cards[role]
-			permitted := card.PermittedActions(game, proposal)
-			action := !permitted["Failure"]
+			//role := game.Roles[i]
+			//card := game.Cards[role]
+			//permitted := card.PermittedActions(game, proposal)
+			//action := !permitted["Failure"]
+			action := true
 			//log.Printf("AI %s action: %v", game.Players[i], action)
 			aerr := do_action(c, game, i, action, proposal, actions)
 			if aerr != nil {
@@ -96,6 +98,26 @@ func ai_proposal(c appengine.Context, game data.Game) *web.AppError {
 		}
 	}
 
+	return nil
+}
+
+func ai_assassinate(c appengine.Context, game data.Game) *web.AppError {
+	assassin := game.FindAssassin()
+	for _, i := range game.AIs {
+		if i == assassin {
+			// Crude way to find a good player
+			order := mathrand.Perm(len(game.Roles) - 1)
+			for _, j := range order {
+				if !game.Cards[game.Roles[j]].AllocatedAsSpy() {
+					aerr := do_assassin(c, game, j)
+					if aerr != nil {
+						return aerr
+					}
+					break
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -304,10 +326,13 @@ func check_actions(c appengine.Context, game data.Game, proposal data.Proposal, 
 		gameFinishing := (game.State.GoodScore >= 3) || (game.State.EvilScore >= 3)
 
 		if gameFinishing {
+			c.Debugf("Game finishing %+v", game);
 			// If good has won on points and we need an assassination
 			// phase, don't end the game just yet
 			if game.FindAssassin() == -1 || game.State.EvilScore >= 3 {
 				game.State.GameOver = true
+			} else {
+				ai_assassinate(c, game)
 			}
 
 			err = db.StoreGameState(c, game)
@@ -607,7 +632,7 @@ func ReqGameMission(w http.ResponseWriter, r *http.Request, c appengine.Context,
 
 	aerr := ValidateGameMission(game, actiondata, mypos, proposal)
 
-	action := actiondata.Action == "success"
+	action := actiondata.Action == "Success"
 
 	aerr = trans.RunGameTransaction(c, &game, func(tc appengine.Context, game data.Game) *web.AppError {
 		actions, err := db.GetActions(c, true, game, game.State.ThisMission)

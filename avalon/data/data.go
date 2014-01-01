@@ -160,7 +160,14 @@ func (game Game) FindAssassin() int {
 		// This game has no assassin
 		return -1
 	}
-	return assassin
+
+	for pos, i := range game.Roles {
+		if i == assassin {
+			return pos
+		}
+	}
+
+	panic("Corrupted game: assassin not present in roles")
 }
 
 func MakeGameSetup(players int) GameSetup {

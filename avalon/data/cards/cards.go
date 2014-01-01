@@ -85,7 +85,7 @@ func (card evilCard) HiddenFrom(game data.Game, other data.CardOps) bool {
 
 
 func GoodHasWon(game data.Game) bool {
-	if game.State.AssassinTarget != -1 && game.Cards[game.State.AssassinTarget].Label() == "Merlin" {
+	if game.State.AssassinTarget != -1 && game.Cards[game.Roles[game.State.AssassinTarget]].Label() == "Merlin" {
 		// Merlin has been assassinated
 		return false
 	}
