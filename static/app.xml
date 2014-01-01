@@ -61,6 +61,23 @@
               <div class='players gameplayers'></div>
            </div>
         </div>
+
+        <div class='cardchoice'>
+            <div class='cardchoice-row'>
+                <div class='card-frame good'>
+                    Good
+                    <div class='card-box good'></div>
+                </div>
+                <div class='card-frame evil'>
+                    Evil
+                    <div class='card-box evil'></div>
+                </div>
+            </div>
+            <div class='cardchoice-row'>
+                <div class='generic good'></div>
+                <div class='generic evil'></div>
+            </div>
+        </div>
     </div>
 
     <div class='main-box pick-mode'>

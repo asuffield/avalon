@@ -4,6 +4,7 @@ import (
 	"appengine"
 	"appengine/datastore"
 	"avalon/data"
+	"avalon/data/cards"
 	"avalon/db"
 	"avalon/db/trans"
 	"avalon/gameplay"
@@ -21,6 +22,7 @@ import (
 )
 
 func init() {
+	http.Handle("/game/setup", web.AjaxHandler(ReqGameSetup))
 	http.Handle("/game/start", web.AjaxHandler(ReqGameStart))
 	http.Handle("/game/join", web.AjaxHandler(ReqGameJoin))
 	http.Handle("/game/reveal", web.GameHandler(ReqGameReveal))
@@ -28,6 +30,7 @@ func init() {
 
 type GameStartData struct {
 	Participants map[string]string `json:"players"`
+	Cards []string `json:"cards"`
 }
 
 type PlayerData struct {
@@ -73,16 +76,21 @@ func game_factory(gamestartdata GameStartData) db.GameFactory {
 			}
 		}
 
+		setup := data.GetSizeSetup(len(players))
+		setup.Cards = gamestartdata.Cards
+
 		gamestatic := data.GameStatic{
 			Id: gameid,
 			Hangout: hangoutid,
 			StartTime: time.Now(),
 			UserIDs: ordered_participants,
 			AIs: ais,
-			Setup: data.MakeGameSetup(len(players)),
+			Setup: setup,
 			Roles: mathrand.Perm(len(players)),
 		}
 		gamestate := data.GameState{
+			DataVersion: 1,
+
 			HaveProposal: false,
 
 			Leader: -1, // See comment in ReqGameStart - this is the "start of game" marker
@@ -93,6 +101,7 @@ func game_factory(gamestartdata GameStartData) db.GameFactory {
 			MissionsComplete: make([]bool, len(gamestatic.Setup.Missions)),
 			GoodScore: 0,
 			EvilScore: 0,
+			AssassinTarget: -1,
 			GameOver: false,
 
 			ThisVote: 0,
@@ -102,8 +111,8 @@ func game_factory(gamestartdata GameStartData) db.GameFactory {
 	}
 }
 
-func DoStartGame(c appengine.Context, game data.Game) *web.AppError {
-	return trans.RunGameTransaction(c, &game, func(tc appengine.Context, game data.Game) *web.AppError {
+func DoStartGame(c appengine.Context, game *data.Game) *web.AppError {
+	return trans.RunGameTransaction(c, game, func(tc appengine.Context, game data.Game) *web.AppError {
 		// We use leader == -1 as a "start of game" indicator, to make
 		// sure we go through this step exactly once
 		// This can go away when the AI code is removed
@@ -138,7 +147,7 @@ func DoGameStartOrJoin(c appengine.Context, session *sessions.Session, factory d
 		return nil, -1, &web.AppError{errors.New(m), m, 404}
 	}
 
-	aerr := DoStartGame(c, *pgame)
+	aerr := DoStartGame(c, pgame)
 	if aerr != nil {
 		return nil, -1, aerr
 	}
@@ -198,9 +207,62 @@ func ValidateGameStart(session *sessions.Session, gamestartdata GameStartData) *
 		return &web.AppError{errors.New(m), m, 403}
 	}
 
-	if len(gamestartdata.Participants) > 5 {
-		m := "Cannot have more than five players"
-		return &web.AppError{errors.New(m), m, 500}
+	participant_count := len(gamestartdata.Participants)
+	if participant_count < 5 {
+		// We will populate with AIs later
+		participant_count = 5
+	}
+
+	setup := data.GetSizeSetup(participant_count)
+	if len(setup.Missions) == 0 {
+		m := "Invalid number of players"
+		return &web.AppError{errors.New(m), m, 400}
+	}
+
+	if len(gamestartdata.Cards) != participant_count {
+		m := "Mismatching number of players and cards"
+		return &web.AppError{errors.New(m), m, 400}
+	}
+
+	cardCounts := map[string]int{}
+	cardops := make([]data.CardOps, len(gamestartdata.Cards))
+	for i, label := range gamestartdata.Cards {
+		ctor, ok := cards.CardFactory[label]
+		if !ok {
+			m := "Invalid card " + label
+			return &web.AppError{errors.New(m), m, 400}
+		}
+
+		cardops[i] = ctor()
+		cardCounts[label] = cardCounts[label] + 1
+	}
+
+	assassin := cardops[0]
+	evilCount := 0
+	for _, card := range cardops {
+		if card.Maximum() > 0 && card.Maximum() < cardCounts[card.Label()] {
+			m := "Too many copies of " + card.Label()
+			return &web.AppError{errors.New(m), m, 400}
+		}
+
+		if card.AllocatedAsSpy() {
+			evilCount++
+		}
+
+		if card.AssassinPriority() > assassin.AssassinPriority() {
+			assassin = card
+		}
+	}
+
+	if evilCount != setup.Spies {
+		m := "Wrong number of evil cards for this number of players"
+		return &web.AppError{errors.New(m), m, 400}
+	}
+
+	_, haveMerlin := cardCounts["Merlin"]
+	if haveMerlin && assassin.AssassinPriority() == 0 {
+		m := "Must have an assassin with Merlin in play"
+		return &web.AppError{errors.New(m), m, 400}
 	}
 
 	return nil
@@ -265,6 +327,50 @@ func ReqGameReveal(w http.ResponseWriter, r *http.Request, c appengine.Context, 
 
 	w.Header().Set("Content-type", "application/json")
 	err := json.NewEncoder(w).Encode(&reveals)
+	if err != nil {
+		return &web.AppError{err, "Error encoding json", 500}
+	}
+
+	return nil
+}
+
+type GameSetupData struct {
+	Players int `json:"players"`
+}
+
+type GameSetupResponse struct {
+	Setup data.GameSetup `json:"setup"`
+	GoodCards []string `json:"good_cards"`
+	EvilCards []string `json:"evil_cards"`
+}
+
+func ReqGameSetup(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session) *web.AppError {
+	var gamesetupdata GameSetupData
+	err := json.NewDecoder(r.Body).Decode(&gamesetupdata)
+	if err != nil {
+		return &web.AppError{err, "Error parsing json body", 500}
+	}
+
+	setup := data.GetSizeSetup(gamesetupdata.Players)
+	if len(setup.Missions) == 0 {
+		m := "Invalid number of players"
+		return &web.AppError{errors.New(m), m, 400}
+	}
+
+	goodCards := []string{}
+	evilCards := []string{}
+	for _, card := range cards.AllCards() {
+		if card.AllocatedAsSpy() {
+			evilCards = append(evilCards, card.Label())
+		} else {
+			goodCards = append(goodCards, card.Label())
+		}
+	}
+
+	response := GameSetupResponse{setup, goodCards, evilCards}
+
+	w.Header().Set("Content-type", "application/json")
+	err = json.NewEncoder(w).Encode(&response)
 	if err != nil {
 		return &web.AppError{err, "Error encoding json", 500}
 	}

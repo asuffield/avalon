@@ -16,6 +16,11 @@ type CardOps interface {
 	Label() string
 	// This is true if the card takes up a spy slot during game creation
 	AllocatedAsSpy() bool
+	// Maximum number of copies of this card which may be used in the
+	// game (0 for the filler cards)
+	Maximum() int
+	// This is the priority order for being the one to assassinate Merlin
+	AssassinPriority() int
 	// This is true if the card has won the game
 	HasWon(Game) bool
 	// This returns a map of actions to offer, which is true if that
@@ -36,6 +41,7 @@ type Mission struct {
 type GameSetup struct {
 	Missions []Mission `json:"missions"`
 	Cards []string `json:"cards"`
+	Spies int `json:"spies"`
 }
 
 type Proposal struct {
@@ -46,6 +52,9 @@ type Proposal struct {
 }
 
 type GameState struct {
+	// This is used to manage data migrations
+	DataVersion int
+
 	// These value are updated by a completed proposal
 	HaveProposal bool
 
@@ -60,6 +69,7 @@ type GameState struct {
 	MissionsComplete []bool
 	GoodScore int
 	EvilScore int
+	AssassinTarget int
 	GameOver bool
 }
 
@@ -120,6 +130,37 @@ func (proposal Proposal) LookupMissionSlot(pos int) (int, bool) {
 		}
 	}
 	return -1, false
+}
+
+var gameSizes map[int]GameSetup = map[int]GameSetup {
+	5:  GameSetup{Spies: 2, Missions: []Mission { Mission{2, 0}, Mission{3, 0}, Mission{2, 0}, Mission{3, 0}, Mission{3, 0} }},
+	6:  GameSetup{Spies: 2, Missions: []Mission { Mission{2, 0}, Mission{3, 0}, Mission{4, 0}, Mission{3, 0}, Mission{4, 0} }},
+	7:  GameSetup{Spies: 3, Missions: []Mission { Mission{2, 0}, Mission{3, 0}, Mission{3, 0}, Mission{4, 1}, Mission{4, 0} }},
+	8:  GameSetup{Spies: 3, Missions: []Mission { Mission{3, 0}, Mission{4, 0}, Mission{4, 0}, Mission{5, 1}, Mission{5, 0} }},
+	9:  GameSetup{Spies: 3, Missions: []Mission { Mission{3, 0}, Mission{4, 0}, Mission{4, 0}, Mission{5, 1}, Mission{5, 0} }},
+	10: GameSetup{Spies: 4, Missions: []Mission { Mission{3, 0}, Mission{4, 0}, Mission{4, 0}, Mission{5, 1}, Mission{5, 0} }},
+}
+
+func GetSizeSetup(players int) GameSetup {
+	return gameSizes[players]
+}
+
+func (game Game) FindAssassin() int {
+	merlin := false
+	assassin := 0
+	for i, card := range game.Cards {
+		if card.Label() == "Merlin" {
+			merlin = true
+		}
+		if card.AssassinPriority() > game.Cards[assassin].AssassinPriority() {
+			assassin = i
+		}
+	}
+	if !merlin || game.Cards[assassin].AssassinPriority() == 0 {
+		// This game has no assassin
+		return -1
+	}
+	return assassin
 }
 
 func MakeGameSetup(players int) GameSetup {

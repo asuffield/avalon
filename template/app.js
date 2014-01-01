@@ -142,7 +142,7 @@
 
         if (foundme) {
             this.participant_ids = participant_ids;
-            $('button.start-game').prop('disabled', false);
+            this.participant_count = participants.length;
         }
         else {
             console.log("WTF: didn't find me in", participants, gapi.hangout.getParticipants());
@@ -156,10 +156,22 @@
 
         this.ui.$start_button.prop('disabled', true);
 
+        var goodcards = this.ui.$goodcards.children(".selected").map(function() {return $(this).data("label")}).get();
+        var evilcards = this.ui.$evilcards.children(".selected").map(function() {return $(this).data("label")}).get();
+
+        for (var i = goodcards.length; i < this.setup_good_count; i++) {
+            goodcards.push("Good");
+        }
+        for (var i = evilcards.length; i < this.setup_evil_count; i++) {
+            evilcards.push("Evil");
+        }
+
         var that = this;
 
         this.api('game/start',
-                 { players: this.participant_ids }
+                 { players: this.participant_ids,
+                   cards: goodcards.concat(evilcards),
+                 }
                 ).done(this.handleGameState.bind(this))
             .fail(function() {that.ui.$start_button.prop('disabled', false)});
     };
@@ -183,9 +195,122 @@
     App.prototype.startMode = function() {
         this.ui.$start_button = $('button.start-game');
         this.ui.$gameplayers = $('div.start-mode div.gameplayers');
+        this.ui.$cardchoice = $('div.cardchoice');
+        this.ui.$goodcards = this.ui.$cardchoice.find('.card-box.good');
+        this.ui.$genericgood = this.ui.$cardchoice.find('.generic.good');
+        this.ui.$evilcards = this.ui.$cardchoice.find('.card-box.evil');
+        this.ui.$genericevil = this.ui.$cardchoice.find('.generic.evil');
         this.showGamePlayers();
 
+        this.ui.$cardchoice.hide();
         $('div.start-mode').show();
+
+        this.loadSetup();
+    };
+
+    App.prototype.loadSetup = function() {
+        if (this.participant_ids === null || this.gamestate != 'start') {
+            return;
+        }
+
+        this.setup_players = this.participant_count;
+        if (this.setup_players < 5) {
+            this.setup_players = 5;
+        }
+
+        if (this.loadsetupajax) {
+            this.loadsetupajax.abort();
+        }
+        this.loadsetupajax = this.api('game/setup', { players: this.setup_players }).done(this.handleGameSetup.bind(this));
+    };
+
+    App.prototype.handleGameSetup = function(msg) {
+        this.loadsetupajax = null;
+        if (this.gamestate != 'start') {
+            return;
+        }
+
+        this.setup_evil_count = msg.setup.spies;
+        this.setup_good_count = this.setup_players - this.setup_evil_count;
+
+        // Remove the generic cards
+        var goodcards = msg.good_cards.filter(function(e) {return e != "Good"});
+        var evilcards = msg.evil_cards.filter(function(e) {return e != "Evil"});
+        goodcards.sort();
+        evilcards.sort();
+
+        this.ui.$goodcards.empty();
+        this.ui.$evilcards.empty();
+
+        for (var i = 0; i < goodcards.length; i++) {
+            var $card = $("<div class='card good unselected'/>");
+            $card.text(goodcards[i]);
+            $card.data("label", goodcards[i]);
+            $card.prepend($("<span class='card-icon ui-icon ui-icon-close'>"));
+            $card.click(this.clickCard.bind(this, $card));
+            this.ui.$goodcards.append($card);
+        }
+
+        for (var i = 0; i < evilcards.length; i++) {
+            var $card = $("<div class='card evil unselected'/>");
+            $card.text(evilcards[i]);
+            $card.data("label", evilcards[i]);
+            $card.prepend($("<span class='card-icon ui-icon ui-icon-close'>"));
+            $card.click(this.clickCard.bind(this, $card));
+            this.ui.$evilcards.append($card);
+        }
+
+        this.updateGameSetup();
+
+        this.ui.$cardchoice.show();
+    };
+
+    App.prototype.updateGameSetup = function(msg) {
+        if (this.gamestate != 'start') {
+            return;
+        }
+
+        var good_count = this.ui.$goodcards.children(".selected").length;
+        var evil_count = this.ui.$evilcards.children(".selected").length;
+
+        var generic_good = this.setup_good_count - good_count;
+        var generic_evil = this.setup_evil_count - evil_count;
+
+        $(".start-mode button.start-game").prop('disabled', false);
+
+        if (generic_good < 0) {
+            this.ui.$genericgood.text("Too many!");
+            $(".start-mode button.start-game").prop('disabled', true);
+        }
+        else if (generic_good == 0) {
+            this.ui.$genericgood.text("");
+        }
+        else {
+            this.ui.$genericgood.text("...plus " + generic_good + " Good card" + (generic_good == 1 ? "" : "s"));
+        }
+
+        if (generic_evil < 0) {
+            this.ui.$genericevil.text("Too many!");
+            $(".start-mode button.start-game").prop('disabled', true);
+        }
+        else if (generic_evil == 0) {
+            this.ui.$genericevil.text("");
+        }
+        else {
+            this.ui.$genericevil.text("...plus " + generic_evil + " Evil card" + (generic_evil == 1 ? "" : "s"));
+        }
+    };
+
+    App.prototype.clickCard = function($card, e) {
+        if ($card.hasClass("selected")) {
+            $card.removeClass("selected").addClass("unselected");
+            $card.find(".card-icon").removeClass("ui-icon-check").addClass("ui-icon-close");
+        }
+        else {
+            $card.removeClass("unselected").addClass("selected");
+            $card.find(".card-icon").removeClass("ui-icon-close").addClass("ui-icon-check");
+        }
+        this.updateGameSetup();
     };
 
     App.prototype.resetPickMode = function() {
@@ -432,6 +557,7 @@
 
     App.prototype.onParticipantsChanged = function (event) {
         this.showGamePlayers();
+        this.loadSetup();
     };
 
     App.prototype.revealRoles = function() {
@@ -484,7 +610,7 @@
     };
 
     App.prototype.fetchGameState = function() {
-        if (this.fetchajax !== null) {
+        if (this.fetchajax) {
             this.fetchajax.abort();
         }
         this.fetchajax = this.api('game/state', {}).done(this.handleGameState.bind(this));

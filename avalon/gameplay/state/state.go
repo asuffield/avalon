@@ -45,8 +45,15 @@ type GameStateMission struct {
 	AllowActions map[string]bool `json:"allow_actions"`
 }
 
+type GameStateAssassination struct {
+	General GameStateGeneral `json:"general"`
+	Assassin int `json:"assassin"`
+	Cards []string `json:"cards"`
+}
+
 type GameStateOver struct {
 	General GameStateGeneral `json:"general"`
+	AssassinTarget int `json:"assassin_target"`
 	Result string `json:"result"`
 	Comment string `json:"comment"`
 	Cards []string `json:"cards"`
@@ -68,7 +75,10 @@ func MakeGameState(game data.Game, playerids []string, results []*data.MissionRe
 	if game.State.GameOver {
 		var result string
 		var comment string
-		if game.State.GoodScore >= 3 {
+
+		if game.State.AssassinTarget != -1 && game.Cards[game.State.AssassinTarget].Label() == "Merlin" {
+			result = "Merlin has been assassinated"
+		} else if game.State.GoodScore >= 3 {
 			result = "Good has won"
 		} else {
 			result = "Evil has won"
@@ -90,8 +100,33 @@ func MakeGameState(game data.Game, playerids []string, results []*data.MissionRe
 		general.State = "gameover"
 		return GameStateOver{
 			General: general,
+			AssassinTarget: game.State.AssassinTarget,
 			Result: result,
 			Comment: comment,
+			Cards: cards,
+		}
+	}
+
+	if game.State.GoodScore >= 3 {
+		// Must be in the assassination phase
+		assassin := game.FindAssassin()
+		if assassin == -1 {
+			panic("Should be in assassination phase, but we have no assassin!")
+		}
+
+		cards := make([]string, len(game.Roles))
+		for i, role := range game.Roles {
+			// We'll use the players who "haven't won" as the evil
+			// players - those are the same thing for now
+			if !game.Cards[role].HasWon(game) {
+				cards[i] = game.Cards[role].Label()
+			}
+		}
+
+		general.State = "assassination"
+		return GameStateAssassination{
+			General: general,
+			Assassin: assassin,
 			Cards: cards,
 		}
 	}

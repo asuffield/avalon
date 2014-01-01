@@ -301,9 +301,15 @@ func check_actions(c appengine.Context, game data.Game, proposal data.Proposal, 
 		results = append(results, &result)
 
 		game.State.GoodScore, game.State.EvilScore = count_score(results)
-		game.State.GameOver = (game.State.GoodScore >= 3) || (game.State.EvilScore >= 3)
+		gameFinishing := (game.State.GoodScore >= 3) || (game.State.EvilScore >= 3)
 
-		if game.State.GameOver {
+		if gameFinishing {
+			// If good has won on points and we need an assassination
+			// phase, don't end the game just yet
+			if game.FindAssassin() == -1 || game.State.EvilScore >= 3 {
+				game.State.GameOver = true
+			}
+
 			err = db.StoreGameState(c, game)
 			if err != nil {
 				return &web.AppError{err, "Error storing game", 500}
@@ -359,6 +365,19 @@ func do_action(c appengine.Context, game data.Game, mypos int, action bool, prop
 	aerr := check_actions(c, game, proposal, *actions)
 	if aerr != nil {
 		return aerr
+	}
+
+	return nil
+}
+
+func do_assassin(c appengine.Context, game data.Game, target int) *web.AppError {
+	// We don't need to do anything more than record it, game is over now...
+	game.State.AssassinTarget = target
+	game.State.GameOver = true
+
+	err := db.StoreGameState(c, game)
+	if err != nil {
+		return &web.AppError{err, "Error storing game", 500}
 	}
 
 	return nil
@@ -600,6 +619,61 @@ func ReqGameMission(w http.ResponseWriter, r *http.Request, c appengine.Context,
 		}
 
 		return do_action(tc, game, mypos, action, *proposal, actions)
+	})
+	if aerr != nil {
+		return aerr
+	}
+
+	return state.ReqGameState(w, r, c, session, game, mypos)
+}
+
+type AssassinData struct {
+	Target int `json:"target"`
+}
+
+func ValidateGameAssassin(game data.Game, assassindata AssassinData, mypos int) *web.AppError {
+	if game.State.GameOver {
+		m := "This game is over"
+		return &web.AppError{errors.New(m), m, 400}
+	}
+
+	if game.FindAssassin() != mypos {
+		m := "You are not the assassin"
+		return &web.AppError{errors.New(m), m, 400}
+	}
+
+	if assassindata.Target < 0 || assassindata.Target >= len(game.Roles) {
+		m := "Invalid position in proposal"
+		return &web.AppError{errors.New(m), m, 400}
+	}
+
+	if game.Cards[assassindata.Target].AllocatedAsSpy() {
+		m := "Must target a good player"
+		return &web.AppError{errors.New(m), m, 400}
+	}
+
+	return nil
+}
+
+func ReqGameAssassin(w http.ResponseWriter, r *http.Request, c appengine.Context, session *sessions.Session, game data.Game, mypos int) *web.AppError {
+	err := db.EnsureGameState(c, &game, true)
+	if err != nil {
+		return &web.AppError{err, "Error retrieving game state", 500}
+	}
+
+	var assassindata AssassinData
+	err = json.NewDecoder(r.Body).Decode(&assassindata)
+	if err != nil {
+		return &web.AppError{err, "Error parsing json body", 500}
+	}
+
+	aerr := ValidateGameAssassin(game, assassindata, mypos)
+	if aerr != nil {
+		return aerr
+	}
+
+	aerr = trans.RunGameTransaction(c, &game, func(tc appengine.Context, game data.Game) *web.AppError {
+		return do_assassin(tc, game, assassindata.Target)
 	})
 	if aerr != nil {
 		return aerr
