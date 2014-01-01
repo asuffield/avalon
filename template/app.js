@@ -469,9 +469,6 @@
         this.ui.$tableplayers = $('div.table-order div.players');
         this.ui.$lastproposal = $('div.last-proposal');
         this.ui.$lastproposalplayers = $('div.last-proposal div.players');
-        this.ui.$leader = $('div.game-status span.leader');
-        this.ui.$thismission = $('div.game-status span.thismission');
-        this.ui.$thisproposal = $('div.game-status span.thisproposal');
         this.ui.$missionstatus = $('div.mission-results div.mission-status');
         this.ui.$proposalstatus = $('div.proposals div.proposal-status');
     }
@@ -690,7 +687,7 @@
             var $box = $("<div class='reveal'/>");
             $box.text(msg[i].label);
             var $list = $("<div class='players'/>");
-            this.renderPlayers(msg[i].players, {}, null, $list);
+            this.renderPlayers(msg[i].players, {}, [], $list);
             $box.append($list);
             this.$msgbox.append($box);
         }
@@ -744,17 +741,18 @@
 
         for (var i = 0; i < players.length; i++) {
             var $player = $("<div/>");
-            var $iconbox = $("<div class='player-icon'/>");
             var text = this.playerName(players[i]);
             if (i in data && data[i] != "") {
                 text += ': ' + data[i];
             }
             $player.text(text);
-            if (icons) {
+            // These are in reverse order because we prepend them
+            for (var j = icons.length - 1; j >= 0; j--) {
+                var $iconbox = $("<div class='player-icon'/>");
                 $player.prepend($iconbox);
-                if (players[i] in icons) {
+                if (players[i] in icons[j]) {
                     var $icon = $("<span class='player-icon ui-icon'></span>");
-                    $icon.addClass(icons[players[i]]);
+                    $icon.addClass(icons[j][players[i]]);
                     $iconbox.append($icon);
                     //text = ' ' + text;
                 }
@@ -888,7 +886,7 @@
             if (msg.general.state != 'mission') {
                 var icons = {};
                 icons[last_votes.leader] = 'ui-icon-star';
-                this.renderPlayers(last_votes.players, {}, icons, this.ui.$lastproposalplayers);
+                this.renderPlayers(last_votes.players, {}, [{}, icons], this.ui.$lastproposalplayers);
                 this.ui.$lastproposal.show();
             }
             else {
@@ -904,10 +902,6 @@
             tableplayers.push(i);
         }
         var readyicons = {};
-
-        this.ui.$leader.text(this.playerName(msg.general.leader));
-        this.ui.$thismission.text(msg.general.this_mission);
-        this.ui.$thisproposal.text(msg.general.this_proposal);
 
         this.renderMissions(msg.general.setup, msg.general.mission_results);
 
@@ -936,7 +930,7 @@
 
             var icons = {};
             icons[msg.general.leader] = 'ui-icon-star';
-            this.renderPlayers(msg.mission_players, {}, icons, this.ui.$missionplayers);
+            this.renderPlayers(msg.mission_players, {}, [{}, icons], this.ui.$missionplayers);
         }
         else if (msg.general.state == 'mission') {
             for (var i = 0; i < msg.mission_players.length; i++) {
@@ -952,7 +946,7 @@
 
             var icons = {};
             icons[msg.general.leader] = 'ui-icon-star';
-            var mymission = this.renderPlayers(msg.mission_players, {}, icons, this.ui.$missionplayers);
+            var mymission = this.renderPlayers(msg.mission_players, {}, [{}, icons], this.ui.$missionplayers);
 
             if (mymission) {
                 this.ui.$success.prop('disabled', !msg.allow_actions['Success']);
@@ -967,7 +961,7 @@
             this.assassin = msg.assassin;
             var icons = {};
             icons[this.assassin] = 'ui-icon-star';
-            this.renderPlayers(tableplayers, msg.cards, icons, this.ui.$playercards);
+            this.renderPlayers(tableplayers, msg.cards, [{}, icons], this.ui.$playercards);
             if (msg.cards[this.mypos] == "") {
                 // If you're not revealed as an evil player, then mute
                 gapi.hangout.av.setMicrophoneMute(true);
@@ -983,11 +977,13 @@
 
             var icons = {};
             icons[msg.assassin_target] = 'ui-icon-seek-next';
-            this.renderPlayers(tableplayers, msg.cards, icons, this.ui.$playercards);
+            this.renderPlayers(tableplayers, msg.cards, [{}, icons], this.ui.$playercards);
             this.stopInterval();
         }
 
-        this.renderPlayers(tableplayers, lastvote, readyicons, this.ui.$tableplayers);
+        var leadericons = {};
+        leadericons[msg.general.leader] = 'ui-icon-star';
+        this.renderPlayers(tableplayers, lastvote, [readyicons, leadericons], this.ui.$tableplayers);
     };
 
     App.prototype.inrefresh = false;

@@ -51,7 +51,7 @@ div.outer-frame {
 }
 
 .players {
-    margin-left: 20px;
+    margin-left: 10px;
     line-height: 1.3em;
     text-align: left;
 }
@@ -100,6 +100,8 @@ form.proposal {
 .mission-results {
     text-align: center;
     border: 0px;
+    margin-top: 0px;
+    padding: 0px;
 }
 
 .mission-results .mission-status {
@@ -144,6 +146,7 @@ form.proposal {
 .proposals {
     text-align: center;
     border: 0px;
+    padding: 0px;
 }
 
 .proposals .proposal-status {

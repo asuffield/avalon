@@ -43,10 +43,14 @@
 
 <div class='outer-frame'>
 <div id="main">
-    <div class='info-box game-status'>
-        <div class='gameinfo'>Current leader: <span class='leader'/></div>
-        <div class='gameinfo'>Current mission: <span class='thismission'/></div>
-        <div class='gameinfo'>Current proposal: <span class='thisproposal'/></div>
+    <div class='info-box mission-results'>
+        Missions
+        <div class='mission-status'></div>
+    </div>
+
+    <div class='info-box proposals'>
+        Proposals
+        <div class='proposal-status'></div>
     </div>
 
     <div class='main-box loading-mode'>
@@ -153,16 +157,6 @@
     <div class='info-box last-proposal'>
         Last proposal
         <div class='players'></div>
-    </div>
-
-    <div class='info-box mission-results'>
-        Missions
-        <div class='mission-status'></div>
-    </div>
-
-    <div class='info-box proposals'>
-        Proposals
-        <div class='proposal-status'></div>
     </div>
 
     <div class='debug'>
