@@ -341,7 +341,7 @@
     };
 
     App.prototype.pickMode = function() {
-        this.ui.$count = $('div.pick-mode span.playercount');
+        this.ui.$unallocated = $('div.pick-mode span.unallocated-player-markers');
 
         this.ui.$pickbox = $('div.pick-mode form.proposal');
         this.ui.$pick = this.ui.$pickbox.children('div.proposal');
@@ -478,17 +478,14 @@
             return false;
         }
 
-        var $selected = $('input:checked', '#proposal');
+        var $selected = this.ui.$pick.children(".selected");
         if ($selected.length != this.missionsize) {
             return false;
         }
 
         var that = this;
 
-        var players = [];
-        $selected.each(function(i) { players.push( parseInt($(this).val()) ) });
-
-        console.log(players);
+        var players = $selected.map(function(i) { return $(this).data('pos'); }).get();
 
         this.ui.$commitproposal.prop('disabled', true);
         this.ui.$pick.children('input').prop('disabled', true);
@@ -598,17 +595,52 @@
 
     App.prototype.becomeLeader = function() {
         for (var i = 0; i < this.players.length; i++) {
-            var $box = $("<div/>");
-            var $label = $("<label/>");
-            var $input = $("<input type='checkbox'/>");
-            $input.attr('value', i);
-            $box.append($label);
-            $label.text(this.playerName(i))
-            $label.prepend($input);
+            var $box = $("<div class='player unselected'/>");
+            $box.text(this.playerName(i));
+            $box.prepend($("<span class='pick-icon'>"));
+            $box.data('pos', i);
+            $box.click(this.clickPlayer.bind(this, $box));
             this.ui.$pick.append($box);
         }
 
+        this.updateProposal();
         this.ui.$pickbox.show();
+    };
+
+    App.prototype.clickPlayer = function($box, e) {
+        if ($box.hasClass("selected")) {
+            $box.removeClass("selected").addClass("unselected");
+            $box.find(".pick-icon").removeClass("ui-icon-flag").removeClass("ui-icon");
+        }
+        else {
+            var picked_count = this.ui.$pick.children(".selected").length;
+            if (picked_count >= this.missionsize) {
+                return;
+            }
+
+            $box.removeClass("unselected").addClass("selected");
+            $box.find(".pick-icon").addClass("ui-icon-flag").addClass("ui-icon");
+        }
+        this.updateProposal();
+    };
+
+    App.prototype.updateProposal = function(msg) {
+        if (this.gamestate != 'picking') {
+            return;
+        }
+
+        var picked_count = this.ui.$pick.children(".selected").length;
+        var spaces = this.missionsize - picked_count;
+
+        var $flags = this.ui.$unallocated.children(".pick-icon");
+        for (var i = 0; i < ($flags.length - spaces); i++) {
+            $flags[i].remove();
+        }
+        for (var i = $flags.length; i < spaces; i++) {
+            this.ui.$unallocated.append($("<div class='pick-icon ui-icon ui-icon-flag'/>"));
+        }
+
+        this.ui.$commitproposal.prop('disabled', spaces != 0);
     };
 
     App.prototype.becomeAssassin = function(cards) {
@@ -906,15 +938,12 @@
         this.renderMissions(msg.general.setup, msg.general.mission_results);
 
         if (msg.general.state == 'picking') {
+            this.missionsize = msg.mission_size;
             readyicons[msg.general.leader] = 'ui-icon-comment';
             if (msg.general.leader == this.mypos && this.leader != this.mypos) {
                 this.becomeLeader();
             }
             this.leader = msg.general.leader;
-
-            this.missionsize = msg.mission_size;
-
-            this.ui.$count.text(msg.mission_size);
         }
         else if (msg.general.state == 'voting') {
             for (var i = 0; i < msg.voted_players.length; i++) {

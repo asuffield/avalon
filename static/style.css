@@ -64,16 +64,6 @@ div.outer-frame {
     text-align: center;
 }
 
-form.proposal {
-    text-align: center;
-}
-
-.pick-mode div.proposal {
-    text-align: left;
-    margin-top: 5px;
-    margin-left: 20px;
-}
-
 .debug {
     display: none;
 }
@@ -287,4 +277,39 @@ div.vstretch {
 .cardchoice .card.evil.unselected {
     background-color: rgb(255, 196, 196);
     color: rgb(0, 0, 0);
+}
+
+form.proposal {
+    text-align: center;
+}
+
+.pick-mode .unallocated-players {
+    margin-top: 5px;
+    text-align: left;
+}
+
+.pick-mode div.proposal {
+    text-align: left;
+    margin-top: 5px;
+    marin-bottom: 5px;
+}
+
+.pick-mode .player {
+    border: 1px solid black;
+    margin-top: 5px;
+    padding: 5px;
+}
+
+.pick-mode .pick-icon {
+    display: inline-block;
+    width: 16px;
+    vertical-align: text-bottom;
+}
+
+.pick-mode .player.selected {
+    color: rgb(0, 0, 0);
+}
+
+.pick-mode .player.unselected {
+    color: rgb(127, 127, 127);
 }

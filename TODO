@@ -1,9 +1,17 @@
 unit testing
 
-fix picker UI
+abandon game
+
+fix last proposal info box - show all players, move vote reports in here
 
 extra rules:
  - lady of the lake
  - plot thickens
  - lancelot & guinevere
  - tristan & iseult
+ - galahad
+
+move AI into external client
+
+web interface and user statistics
+
