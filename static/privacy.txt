@@ -8,7 +8,7 @@ period:
    like logging it
 
 It processes your real name on the client side, but that's mostly
-handled by Google and is never sent to the server-side part of this
+handled by Google and is never stored by the server-side part of this
 app.
 
 This information is used to run the games and debug problems with the
